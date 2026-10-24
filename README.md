@@ -47,7 +47,7 @@ flowchart LR
 ## ðŸš€ Run locally
 
 ```bash
-git clone https://github.com/ChristopherJoshy/typelo.git
+git clone https://github.com/ChristopherJoshy/Typelo.git
 cd typelo
 
 # Backend
