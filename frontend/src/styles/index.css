@@ -141,6 +141,39 @@ body,
   @apply bg-transparent text-white border border-white/20 hover:border-white/40;
 }
 
+/* Matchmaking CTA follows the selected mode's accent. */
+.match-mode-button[data-mode='ranked'] {
+  background-color: #f43f5e;
+  box-shadow: 0 8px 24px rgba(244, 63, 94, 0.18);
+}
+
+.match-mode-button[data-mode='training'] {
+  background-color: #10b981;
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.18);
+}
+
+.match-mode-button[data-mode='friends'] {
+  background-color: #8b5cf6;
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.18);
+}
+
+.match-mode-button[data-mode='ranked']:hover:not(:disabled) {
+  background-color: #e11d48;
+}
+
+.match-mode-button[data-mode='training']:hover:not(:disabled) {
+  background-color: #059669;
+}
+
+.match-mode-button[data-mode='friends']:hover:not(:disabled) {
+  background-color: #7c3aed;
+}
+
+.match-mode-button:disabled {
+  background-color: rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+}
+
 /* Slow spin animation for decorations */
 .animate-spin-slow {
   animation: spin 8s linear infinite;

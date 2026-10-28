@@ -486,7 +486,7 @@ export async function spinGacha(token: string): Promise<SpinResult> {
   }>(`${API_BASE_URL}/api/shop/spin`, { method: 'POST' }, token)
 
   return {
-    type: response.type as 'cursor' | 'coins' | 'effect',
+    type: response.type as SpinResult['type'],
     cursorId: response.cursor_id,
     cursorInfo: response.cursor_info ? {
       id: response.cursor_info.id,

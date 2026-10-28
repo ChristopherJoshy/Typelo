@@ -261,9 +261,11 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
 
             return result
         } catch (error) {
-            // Revert on failure
-            set((state) => ({ coins: state.coins + cost }))
             console.error('Spin failed:', error)
+            // The request may have reached the server and committed before the
+            // connection failed. Re-read the authoritative balance and items
+            // instead of blindly refunding the optimistic debit.
+            await get().fetchInventory(token)
             set({ error: 'Spin failed' })
             return null
         }
@@ -315,8 +317,12 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
 
             return result
         } catch (e) {
-            // Revert on failure
-            set((state) => ({ coins: state.coins + cost }))
+            // A dropped response can follow a successful server-side roll.
+            // Refresh both inventories to reconcile coins and any awarded item.
+            await Promise.all([
+                get().fetchInventory(token),
+                get().fetchProfileInventory(token),
+            ])
             set({ error: 'Profile spin failed' })
             return null
         }

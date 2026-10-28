@@ -630,6 +630,9 @@ class GameService:
             opponent = session.player1
         else:
             return False
+
+        if player.current_word_index >= len(session.words):
+            return False
         
         # Handle backspace - just update position, don't record keystroke
         if char == '\b':
@@ -642,8 +645,11 @@ class GameService:
             if char_index != player.last_processed_char_index:
                 return False
             word_start = sum(len(word) + 1 for word in session.words[:player.current_word_index])
-            word_end = word_start + len(session.words[player.current_word_index]) if player.current_word_index < len(session.words) else word_start
-            player.current_char_index = max(word_start, min(char_index, word_end))
+            # `char_index` is the cursor position after deleting the previous
+            # character. Keep it beyond the expected word end when the player
+            # has typed extra characters, so the opponent cursor can follow
+            # their actual position until they complete the word.
+            player.current_char_index = max(word_start, char_index)
             player.final_characters.pop(char_index, None)
             # Update dedup tracker for backspace (allow going backwards)
             player.last_processed_char_index = char_index - 1
@@ -669,8 +675,6 @@ class GameService:
             return False
         
         # Create keystroke
-        if player.current_word_index >= len(session.words):
-            return False
         word_start = sum(len(word) + 1 for word in session.words[:player.current_word_index])
         word_end = word_start + len(session.words[player.current_word_index])
         within_word = word_start <= char_index < word_end
@@ -687,7 +691,10 @@ class GameService:
         player.keystrokes.append(keystroke)
         if within_word:
             player.final_characters[char_index] = char
-        player.current_char_index = min(char_index + 1, word_end)
+        # Keep the live cursor at the actual input position, including extra
+        # characters beyond the expected word. Scoring uses final_characters,
+        # so this display position does not grant credit for out-of-word text.
+        player.current_char_index = char_index + 1
         player.last_processed_char_index = char_index  # Track for deduplication
         player.last_input_received_at = time.monotonic()
         

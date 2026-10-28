@@ -78,18 +78,15 @@ const itemVariants: Variants = {
   }
 }
 
-const modeAccentClasses: Record<GameMode, { selected: string; button: string }> = {
+const modeAccentClasses: Record<GameMode, { selected: string }> = {
   ranked: {
     selected: 'border-rose-400/45 bg-rose-400/[0.08]',
-    button: 'bg-[#e11d48] shadow-[0_8px_24px_rgba(225,29,72,0.16)] hover:bg-[#be123c]',
   },
   training: {
     selected: 'border-emerald-400/45 bg-emerald-400/[0.08]',
-    button: 'bg-[#047857] shadow-[0_8px_24px_rgba(4,120,87,0.16)] hover:bg-[#065f46]',
   },
   friends: {
     selected: 'border-violet-400/45 bg-violet-400/[0.08]',
-    button: 'bg-[#6d28d9] shadow-[0_8px_24px_rgba(109,40,217,0.16)] hover:bg-[#5b21b6]',
   },
 }
 
@@ -571,7 +568,8 @@ export default function Dashboard() {
                   type="button"
                   onClick={handlePlay}
                   disabled={isConnecting || cooldown > 0 || !isConnected}
-                  className={`h-16 w-full rounded-xl px-6 text-base font-semibold text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40 disabled:shadow-none ${modeAccentClasses[selectedMode].button}`}
+                  data-mode={selectedMode}
+                  className="match-mode-button h-16 w-full rounded-xl px-6 text-base font-semibold text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40 disabled:shadow-none"
                 >
                   {isConnecting ? 'Connecting…' : !isConnected ? 'Reconnecting…' : 'Find a match'}
                 </button>

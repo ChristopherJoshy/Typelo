@@ -76,7 +76,9 @@ class MatchProgressTests(unittest.IsolatedAsyncioTestCase):
             validate.return_value.valid = True
             for index, char in enumerate('catxx'):
                 self.assertTrue(self.service.process_keystroke('match', 'one', char, 1000 + index * 100, index))
-            self.assertEqual(self.session.player1.current_char_index, 3)
+            self.assertEqual(self.session.player1.current_char_index, 5)
+            self.assertTrue(self.service.process_keystroke('match', 'one', '\b', 1500, 4))
+            self.assertEqual(self.session.player1.current_char_index, 4)
             self.assertTrue(await self.service.process_word_complete('match', 'one', 0))
             self.assertTrue(self.service.process_keystroke('match', 'one', 'd', 1600, 4))
             self.assertEqual(self.session.player1.current_char_index, 5)
