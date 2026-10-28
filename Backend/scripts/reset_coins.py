@@ -27,13 +27,13 @@
 # os: For reading environment variables.
 # pathlib: For path handling.
 # dotenv: For loading .env file.
-# motor.motor_asyncio: Async MongoDB driver.
+# pymongo.AsyncMongoClient: Native asyncio MongoDB driver.
 
 import asyncio
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(env_path)
@@ -49,7 +49,7 @@ async def reset_all_coins() -> None:
     """
     print(f"Connecting to MongoDB: {MONGODB_DATABASE}...")
     
-    client = AsyncIOMotorClient(MONGODB_URI)
+    client = AsyncMongoClient(MONGODB_URI)
     db = client[MONGODB_DATABASE]
     
     try:
@@ -71,13 +71,13 @@ async def reset_all_coins() -> None:
     
     if users_with_coins == 0 and users_without_coins_field == 0:
         print("All users already have coins set to 0. Exiting.")
-        client.close()
+        await client.close()
         return
     
     confirm = input(f"Are you sure you want to reset/add coins to 0 for ALL {total_users} users? (yes/no): ")
     if confirm.lower() != "yes":
         print("Operation cancelled.")
-        client.close()
+        await client.close()
         return
     
     result = await users_collection.update_many(
@@ -90,7 +90,7 @@ async def reset_all_coins() -> None:
     print(f"  - Modified: {result.modified_count} users")
     print(f"  - Users that had coins field added: {users_without_coins_field}")
     
-    client.close()
+    await client.close()
     print("Disconnected from MongoDB.")
 
 

@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 import redis.asyncio as redis
 from dotenv import load_dotenv
 
@@ -23,7 +23,7 @@ async def clear_mongo_db(uri: str, db_name: str, label: str = "MongoDB"):
     masked_uri = uri.split("@")[-1] if "@" in uri else "localhost"
     print(f"   Connecting to {masked_uri} (DB: {db_name})...")
     
-    client = AsyncIOMotorClient(uri)
+    client = AsyncMongoClient(uri)
     try:
         db = client[db_name]
         collections = await db.list_collection_names()
@@ -43,7 +43,7 @@ async def clear_mongo_db(uri: str, db_name: str, label: str = "MongoDB"):
     except Exception as e:
         print(f"   ❌ Error clearing {label}: {e}")
     finally:
-        client.close()
+        await client.close()
 
 async def clear_redis(url: str):
     print(f"\nmagnifying glass Checking Redis...")

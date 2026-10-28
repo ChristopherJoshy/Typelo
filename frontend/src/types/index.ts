@@ -148,7 +148,16 @@ export type ServerMessageType =
   | { type: 'QUEUE_UPDATE'; position: number; elapsed: number }
   | { type: 'MATCH_FOUND'; matchId: string; opponentDisplayName: string; opponentPhotoUrl: string | null; opponentRank: Rank; opponentIsBot: boolean; words: string[] }
   | { type: 'GAME_START'; timestamp: number; duration: number }
-  | { type: 'OPPONENT_PROGRESS'; charIndex: number; wordIndex: number }
+  | {
+      type: 'OPPONENT_PROGRESS'
+      charIndex?: number
+      wordIndex?: number
+      char_index?: number
+      word_index?: number
+      match_id?: string
+      matchId?: string
+      sequence?: number
+    }
   | { type: 'GAME_END'; result: MatchResult }
   | { type: 'ONLINE_COUNT'; count: number }
   | { type: 'ONLINE_USERS'; users: Array<{ user_id: string; display_name: string; photo_url?: string; elo?: number }> }
@@ -399,11 +408,12 @@ export interface ProfileBorderInfo {
 }
 
 export interface ProfileSpinResult {
-  type: 'background' | 'profile_effect' | 'border' | 'nothing'
+  type: 'background' | 'profile_effect' | 'border' | 'coins' | 'nothing'
   itemId?: string
   backgroundInfo?: ProfileBackgroundInfo
   effectInfo?: ProfileEffectInfo
   borderInfo?: ProfileBorderInfo
+  coinsWon?: number
   isNew?: boolean
   pityStreak?: number
   pityActivated?: boolean

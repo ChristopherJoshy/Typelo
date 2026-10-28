@@ -32,17 +32,14 @@
  * --------------------------------------------------------------------------
  *                                   Imports
  * --------------------------------------------------------------------------
- * react: useEffect, useRef, useState
+ * react: useEffect, useRef
  * EFFECTS: Effect definitions from types
- * nanoid: unique keys for particles
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { EFFECTS } from '../types'
-import { nanoid } from 'nanoid'
 
 interface Particle {
-    id: string
     x: number
     y: number
     vx: number
@@ -55,127 +52,216 @@ interface Particle {
     shape?: string
     char?: string
 }
-
 interface CursorEffectProps {
     effectId: string | null
 }
 
-const MAX_PARTICLES = 150 // Increased from 80
-const SPAWN_RATE = 5 // Reduced from 8 for more frequent spawns
+const MAX_PARTICLES = 120
+const SPAWN_RATE = 10
 
 export default function CursorEffect({ effectId }: CursorEffectProps) {
-    const [particles, setParticles] = useState<Particle[]>([])
-    const mousePos = useRef({ x: 0, y: 0 })
-    const lastMousePos = useRef({ x: 0, y: 0 })
-    const lastSpawnTime = useRef(0)
-    const hasPointerPosition = useRef(false)
-    const reqRef = useRef<number>()
-
-    // Track mouse globally
-    useEffect(() => {
-        const handleMouseMove = (e: MouseEvent) => {
-            mousePos.current = { x: e.clientX, y: e.clientY }
-            if (!hasPointerPosition.current) {
-                lastMousePos.current = mousePos.current
-                hasPointerPosition.current = true
-            }
-        }
-        window.addEventListener('mousemove', handleMouseMove, { passive: true })
-        return () => window.removeEventListener('mousemove', handleMouseMove)
-    }, [])
+    const canvasRef = useRef<HTMLCanvasElement>(null)
+    const pointerRef = useRef({ x: 0, y: 0, active: false })
 
     useEffect(() => {
-        // Clear particles when effect changes
-        setParticles([])
-        lastMousePos.current = mousePos.current
+        if (!effectId || effectId === 'none' || !EFFECTS[effectId] ||
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
-        if (!effectId || effectId === 'none' || !EFFECTS[effectId]) {
-            if (reqRef.current) cancelAnimationFrame(reqRef.current)
-            return
-        }
+        const canvas = canvasRef.current
+        const context = canvas?.getContext('2d', { alpha: true })
+        if (!canvas || !context) return
+
+        let frameId: number | null = null
+        let particles: Particle[] = []
+        let lastSpawnAt = 0
+        let lastX = pointerRef.current.x
+        let lastY = pointerRef.current.y
+        let width = 0
+        let height = 0
 
         const tick = (time: number) => {
-            const dx = mousePos.current.x - lastMousePos.current.x
-            const dy = mousePos.current.y - lastMousePos.current.y
-            const speed = Math.sqrt(dx * dx + dy * dy)
-            const isMoving = speed > 0.1
+            frameId = null
+            const pointer = pointerRef.current
+            const dx = pointer.x - lastX
+            const dy = pointer.y - lastY
+            const distance = Math.hypot(dx, dy)
 
-            // Spawn particles
-            const shouldSpawn = isMoving && (time - lastSpawnTime.current > SPAWN_RATE)
-            let newParticles: Particle[] = []
-
-            if (shouldSpawn) {
-                lastSpawnTime.current = time
-                // Increased spawn count for denser trails
-                const spawnCount = Math.min(Math.ceil(speed / 3), 12) // Increased max from 8
-                for (let i = 0; i < spawnCount; i++) {
-                    const progress = (i + 1) / spawnCount
-                    newParticles.push(createParticle(effectId, lastMousePos.current.x + dx * progress, lastMousePos.current.y + dy * progress, dx, dy))
+            if (pointer.active && distance > 1 && time - lastSpawnAt >= SPAWN_RATE) {
+                lastSpawnAt = time
+                const count = Math.min(12, Math.max(1, Math.ceil(distance / 5)))
+                for (let index = 1; index <= count; index++) {
+                    const amount = index / count
+                    particles.push(createParticle(
+                        effectId,
+                        lastX + dx * amount,
+                        lastY + dy * amount,
+                        dx,
+                        dy,
+                    ))
                 }
             }
 
-            // Update existing particles
-            setParticles(prev => {
-                if (prev.length === 0 && newParticles.length === 0) return prev
-                const next = [...prev, ...newParticles].map(p => updateParticle(p, effectId))
-                return next.filter(p => p.life > 0).slice(-MAX_PARTICLES)
-            })
+            particles = particles
+                .map(particle => updateParticle(particle, effectId))
+                .filter(particle => particle.life > 0)
+                .slice(-MAX_PARTICLES)
 
-            lastMousePos.current = mousePos.current
-            reqRef.current = requestAnimationFrame(tick)
+            context.clearRect(0, 0, width, height)
+            for (const particle of particles) drawParticle(context, particle, effectId)
+
+            lastX = pointer.x
+            lastY = pointer.y
+            if (particles.length > 0) frameId = requestAnimationFrame(tick)
         }
 
-        reqRef.current = requestAnimationFrame(tick)
+        const scheduleFrame = () => {
+            if (frameId === null) frameId = requestAnimationFrame(tick)
+        }
+
+        const resize = () => {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2)
+            width = window.innerWidth
+            height = window.innerHeight
+            canvas.width = Math.round(width * dpr)
+            canvas.height = Math.round(height * dpr)
+            canvas.style.width = `${width}px`
+            canvas.style.height = `${height}px`
+            context.setTransform(dpr, 0, 0, dpr, 0, 0)
+            scheduleFrame()
+        }
+
+        const handlePointerMove = (event: PointerEvent) => {
+            const wasActive = pointerRef.current.active
+            pointerRef.current = { x: event.clientX, y: event.clientY, active: true }
+            if (!wasActive) {
+                lastX = event.clientX
+                lastY = event.clientY
+            }
+            scheduleFrame()
+        }
+        const handlePointerLeave = () => { pointerRef.current.active = false }
+
+        resize()
+        window.addEventListener('pointermove', handlePointerMove, { passive: true })
+        document.documentElement.addEventListener('pointerleave', handlePointerLeave, { passive: true })
+        window.addEventListener('blur', handlePointerLeave)
+        window.addEventListener('resize', resize, { passive: true })
         return () => {
-            if (reqRef.current) cancelAnimationFrame(reqRef.current)
+            if (frameId !== null) cancelAnimationFrame(frameId)
+            window.removeEventListener('pointermove', handlePointerMove)
+            document.documentElement.removeEventListener('pointerleave', handlePointerLeave)
+            window.removeEventListener('blur', handlePointerLeave)
+            window.removeEventListener('resize', resize)
+            particles = []
+            context.clearRect(0, 0, width, height)
         }
     }, [effectId])
 
-    if (!effectId || effectId === 'none') return null
-
     return (
-        <div className="fixed top-0 left-0 w-full h-full pointer-events-none z-[9999] overflow-hidden" style={{ margin: 0, padding: 0 }}>
-            {particles.map(p => {
-                const shapeStyle = getParticleShape(p, effectId)
-                // Determine transform: if shape has transform, use it, else use default centering + getTransform
-                const baseTransform = shapeStyle.transform || `translate(-50%, -50%) ${getTransform(p, effectId)}`
-                const { transform: _ignoredTransform, ...restShapeStyle } = shapeStyle
-
-                return (
-                    <div
-                        key={p.id}
-                        className={`absolute ${p.shape === 'circle' || !p.shape ? 'rounded-full' : ''}`}
-                        style={{
-                            left: 0,
-                            top: 0,
-                            transform: `translate(${p.x}px, ${p.y}px) ${baseTransform}`, // Move using transform to avoid layout sub-pixel issues
-                            width: p.size,
-                            height: p.size,
-                            backgroundColor: p.color,
-                            opacity: p.life,
-                            filter: getFilter(effectId),
-                            boxShadow: getGlow(p, effectId),
-                            willChange: 'transform, opacity',
-                            ...restShapeStyle
-                        }}
-                    >
-                        {p.char && (
-                            <span
-                                className="absolute inset-0 flex items-center justify-center font-mono font-bold"
-                                style={{
-                                    color: p.color,
-                                    fontSize: p.size * 0.8,
-                                    textShadow: `0 0 4px ${p.color}`
-                                }}
-                            >
-                                {p.char}
-                            </span>
-                        )}
-                    </div>
-                )
-            })}
-        </div>
+        <canvas
+            ref={canvasRef}
+            aria-hidden="true"
+            className="pointer-events-none fixed inset-0 z-[9999]"
+            style={{ width: '100vw', height: '100dvh' }}
+        />
     )
+}
+
+function drawParticle(context: CanvasRenderingContext2D, particle: Particle, type: string) {
+    const size = Math.max(1, particle.size)
+    const radius = size / 2
+    context.save()
+    context.globalAlpha = Math.max(0, Math.min(1, particle.life))
+    context.translate(particle.x, particle.y)
+    context.rotate(((particle.rotation || 0) * Math.PI) / 180)
+    context.fillStyle = particle.color
+    context.strokeStyle = particle.color
+    context.lineWidth = Math.max(1, size * 0.14)
+    context.shadowColor = particle.color
+    context.shadowBlur = ['sparkle', 'fire', 'electric', 'thunder', 'neon', 'supernova', 'divine_light', 'cyberpunk', 'plasma_trail'].includes(type)
+        ? Math.min(16, size * 1.4)
+        : 0
+
+    if (particle.char) {
+        context.font = `700 ${size}px ui-monospace, monospace`
+        context.textAlign = 'center'
+        context.textBaseline = 'middle'
+        context.fillText(particle.char, 0, 0)
+        context.restore()
+        return
+    }
+
+    switch (particle.shape) {
+        case 'square':
+            context.fillRect(-radius, -radius, size, size)
+            break
+        case 'diamond':
+        case 'crystal':
+            context.beginPath()
+            context.moveTo(0, -radius)
+            context.lineTo(radius * 0.72, 0)
+            context.lineTo(0, radius)
+            context.lineTo(-radius * 0.72, 0)
+            context.closePath()
+            context.fill()
+            break
+        case 'star': {
+            context.beginPath()
+            for (let point = 0; point < 10; point++) {
+                const angle = -Math.PI / 2 + (point * Math.PI) / 5
+                const pointRadius = point % 2 === 0 ? radius : radius * 0.45
+                const x = Math.cos(angle) * pointRadius
+                const y = Math.sin(angle) * pointRadius
+                if (point === 0) context.moveTo(x, y)
+                else context.lineTo(x, y)
+            }
+            context.closePath()
+            context.fill()
+            break
+        }
+        case 'leaf':
+        case 'petal':
+            context.beginPath()
+            context.ellipse(0, 0, radius * 0.62, radius, 0, 0, Math.PI * 2)
+            context.fill()
+            break
+        case 'heart':
+            context.beginPath()
+            context.moveTo(0, radius * 0.85)
+            context.bezierCurveTo(-radius * 1.5, -radius * 0.05, -radius * 0.85, -radius, 0, -radius * 0.42)
+            context.bezierCurveTo(radius * 0.85, -radius, radius * 1.5, -radius * 0.05, 0, radius * 0.85)
+            context.fill()
+            break
+        case 'tear':
+            context.beginPath()
+            context.moveTo(0, -radius)
+            context.bezierCurveTo(radius * 0.9, -radius * 0.05, radius * 0.75, radius, 0, radius)
+            context.bezierCurveTo(-radius * 0.75, radius, -radius * 0.9, -radius * 0.05, 0, -radius)
+            context.fill()
+            break
+        case 'ghost':
+            context.beginPath()
+            context.arc(0, -radius * 0.12, radius * 0.72, Math.PI, 0)
+            context.lineTo(radius * 0.72, radius * 0.7)
+            context.lineTo(radius * 0.3, radius * 0.45)
+            context.lineTo(0, radius * 0.72)
+            context.lineTo(-radius * 0.3, radius * 0.45)
+            context.lineTo(-radius * 0.72, radius * 0.7)
+            context.closePath()
+            context.fill()
+            break
+        default:
+            if (type === 'ripple' || type === 'bubble') {
+                context.beginPath()
+                context.arc(0, 0, radius, 0, Math.PI * 2)
+                context.stroke()
+            } else {
+                context.beginPath()
+                context.arc(0, 0, radius, 0, Math.PI * 2)
+                context.fill()
+            }
+    }
+    context.restore()
 }
 
 function createParticle(type: string, x: number, y: number, dx: number, dy: number): Particle {
@@ -540,7 +626,6 @@ function createParticle(type: string, x: number, y: number, dx: number, dy: numb
     }
 
     return {
-        id: nanoid(),
         x,
         y,
         vx,
@@ -829,136 +914,4 @@ function updateParticle(p: Particle, type: string): Particle {
     }
 
     return next
-}
-
-function getTransform(p: Particle, type: string): string {
-    if (p.rotation) {
-        return `rotate(${p.rotation}deg)`
-    }
-    return ''
-}
-
-function getFilter(type: string): string {
-    switch (type) {
-        case 'fire':
-        case 'sparkle':
-        case 'electric':
-        case 'thunder':
-        case 'lightning':
-        case 'dragon':
-            return 'blur(0.5px)'
-        case 'smoke':
-        case 'poison':
-        case 'void_rift':
-            return 'blur(4px)'
-        case 'neon':
-            return 'blur(1px)'
-        case 'divine_light':
-        case 'godray':
-            return 'blur(2px)'
-        case 'glitch':
-            return 'none'
-        case 'cyberpunk':
-        case 'plasma_trail':
-            return 'blur(0.5px)'
-        default:
-            return 'none'
-    }
-}
-
-function getGlow(p: Particle, type: string): string {
-    switch (type) {
-        case 'sparkle':
-        case 'dust':
-        case 'gold_trail':
-        case 'sparkle_mini':
-            return `0 0 8px ${p.color}, 0 0 16px ${p.color}`
-        case 'fire':
-        case 'dragon':
-        case 'lava':
-        case 'ember':
-            return `0 0 10px ${p.color}, 0 0 20px #ef4444, 0 0 30px ${p.color}`
-        case 'electric':
-        case 'thunder':
-        case 'lightning':
-            return `0 0 12px ${p.color}, 0 0 24px ${p.color}, 0 0 36px ${p.color}`
-        case 'neon':
-            return `0 0 12px ${p.color}, 0 0 24px ${p.color}, 0 0 36px ${p.color}, 0 0 48px ${p.color}`
-        case 'aurora_trail':
-        case 'galaxy_trail':
-        case 'cosmic_dust':
-            return `0 0 10px ${p.color}, 0 0 20px ${p.color}, 0 0 30px ${p.color}`
-        case 'divine_light':
-        case 'godray':
-        case 'supernova':
-            return `0 0 12px ${p.color}, 0 0 24px #fef3c7, 0 0 36px ${p.color}`
-        case 'void_rift':
-        case 'singularity':
-        case 'shadow':
-            return `0 0 10px ${p.color}, 0 0 20px ${p.color}, 0 0 30px rgba(167, 139, 250, 0.5)`
-        case 'spirit':
-            return `0 0 10px ${p.color}, 0 0 20px rgba(34, 211, 238, 0.7), 0 0 30px ${p.color}`
-        case 'ice':
-            return `0 0 8px ${p.color}, 0 0 16px #e0f2fe, 0 0 24px ${p.color}`
-        // NEW EFFECTS
-        case 'glitch':
-            return `0 0 4px ${p.color}`
-        case 'cyberpunk':
-            return `0 0 6px ${p.color}, 0 0 12px #00ff88`
-        case 'plasma_trail':
-            return `0 0 6px ${p.color}, 0 0 12px #22d3ee`
-        case 'music':
-            return `0 0 4px ${p.color}`
-        case 'timeshift':
-            return `0 0 6px ${p.color}, 0 0 12px #6366f1`
-        default:
-            return 'none'
-    }
-}
-
-function getParticleShape(p: Particle, type: string): React.CSSProperties {
-    switch (p.shape) {
-        case 'square':
-            return { borderRadius: '2px' }
-        case 'diamond':
-            return {
-                borderRadius: '2px',
-                transform: `translate(-50%, -50%) rotate(45deg) ${p.rotation ? `rotate(${p.rotation}deg)` : ''}`
-            }
-        case 'heart':
-            return {
-                backgroundColor: 'transparent',
-                width: p.size,
-                height: p.size,
-                position: 'relative' as const,
-                backgroundImage: `radial-gradient(circle at 30% 30%, ${p.color} 0%, ${p.color} 50%, transparent 50%)`,
-            }
-        case 'star':
-            return {
-                clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)',
-            }
-        case 'leaf':
-            return {
-                borderRadius: '50% 0% 50% 0%',
-            }
-        case 'petal':
-            return {
-                borderRadius: '50% 0% 50% 50%',
-            }
-        case 'crystal':
-            return {
-                clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
-            }
-        case 'tear':
-            return {
-                borderRadius: '50% 50% 50% 0%',
-                transform: `translate(-50%, -50%) rotate(-45deg)`,
-            }
-        case 'ghost':
-            return {
-                borderRadius: '50% 50% 30% 30%',
-            }
-        default:
-            return {}
-    }
 }

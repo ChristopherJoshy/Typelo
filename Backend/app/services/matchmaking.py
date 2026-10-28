@@ -80,7 +80,8 @@ import json
 from typing import Optional, Dict, List, Coroutine, Any, Callable
 import time
 import uuid
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
+from contextvars import ContextVar
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis
@@ -95,6 +96,12 @@ QUEUE_KEY = "matchmaking:queue"
 ENTRY_KEY_PREFIX = "matchmaking:entry:"
 MATCHED_KEY = "matchmaking:matched"
 LOCK_KEY = "matchmaking:lock:"
+LOCK_RELEASE_SCRIPT = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('del', KEYS[1])
+end
+return 0
+"""
 
 TRAINING_QUEUE_KEY = "training:queue"
 TRAINING_ENTRY_KEY_PREFIX = "training:entry:"
@@ -137,6 +144,7 @@ class PendingMatch:
     is_bot_match: bool
     is_training: bool = False
     is_friends_mode: bool = False
+    created_at: float = field(default_factory=time.monotonic)
 
 class MatchmakingService:
     """
@@ -162,57 +170,109 @@ class MatchmakingService:
         
         # Local cache for pending matches before game start
         self._pending_matches: Dict[str, PendingMatch] = {}
+        self._held_locks: ContextVar[Dict[str, str]] = ContextVar(
+            f"matchmaking_locks_{id(self)}", default={}
+        )
         
     async def init_redis(self):
         """Initialize Redis connection"""
         if not self._redis_connected:
-            self._redis = redis.from_url(
-                self.settings.redis_url, 
-                encoding="utf-8", 
-                decode_responses=True
-            )
-            # Test connection
+            if self._redis is None:
+                self._redis = redis.from_url(
+                    self.settings.redis_url,
+                    encoding="utf-8",
+                    decode_responses=True,
+                    socket_connect_timeout=3,
+                    socket_timeout=3,
+                    health_check_interval=30,
+                    max_connections=100,
+                )
             try:
                 await self._redis.ping()
                 self._redis_connected = True
                 logger.info("Connected to Redis for matchmaking")
-                
-                # Start background cleanup task
-                asyncio.create_task(self._cleanup_stale_entries())
             except Exception as e:
-                logger.error(f"Failed to connect to Redis: {e}")
-                
-    async def _cleanup_stale_entries(self):
-        """Periodically clean up stale entries in Redis"""
+                self._redis_connected = False
+                logger.error(f"Redis is unavailable; matchmaking will retry: {e}")
+
+    async def monitor_redis(self) -> None:
+        """Recover matchmaking automatically when Redis temporarily disconnects."""
         while True:
             try:
-                if self._redis_connected:
-                    # Logic to clean up entries older than X minutes that
-                    # are stuck in queue or matched state
-                    # This is a resilience measure
-                    pass
+                if self._redis is None:
+                    await self.init_redis()
+                else:
+                    await self._redis.ping()
+                    if not self._redis_connected:
+                        logger.info("Redis recovered; matchmaking is available")
+                    self._redis_connected = True
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
-                logger.error(f"Error in matchmaking cleanup: {e}")
-            await asyncio.sleep(60)
+                if self._redis_connected:
+                    logger.warning(f"Redis connection lost; matchmaking will retry: {e}")
+                self._redis_connected = False
+            await asyncio.sleep(30 if self._redis_connected else 3)
+
+    async def close_redis(self) -> None:
+        self._redis_connected = False
+        if self._redis is not None:
+            await self._redis.aclose()
+            self._redis = None
             
     async def _periodic_pending_cleanup(self):
-        """Clean up local pending matches map"""
+        """Prune only abandoned pending matches; never drop live match state."""
         while True:
-            # Simple cleanup of old items if map gets too large
-            # In a real distributed system this would also be in Redis
-            if len(self._pending_matches) > 1000:
-                self._pending_matches.clear()
-            await asyncio.sleep(300)
+            now = time.monotonic()
+            stale_ids = [
+                match_id for match_id, pending in self._pending_matches.items()
+                if now - pending.created_at > 600
+            ]
+            for match_id in stale_ids:
+                self._pending_matches.pop(match_id, None)
+            await asyncio.sleep(60)
 
-    async def _acquire_lock(self, lock_name: str, timeout: float = 2.0) -> bool:
-        """Acquire a distributed lock"""
+    async def _acquire_lock(self, lock_name: str, timeout: float = 10.0) -> bool:
+        """Acquire a lease with a unique owner token."""
         key = f"{LOCK_KEY}{lock_name}"
-        return await self._redis.set(key, "locked", nx=True, ex=int(timeout))
+        token = uuid.uuid4().hex
+        acquired = await self._redis.set(key, token, nx=True, px=max(1000, int(timeout * 1000)))
+        if acquired:
+            held_locks = dict(self._held_locks.get())
+            held_locks[lock_name] = token
+            self._held_locks.set(held_locks)
+        return bool(acquired)
 
     async def _release_lock(self, lock_name: str) -> None:
-        """Release a distributed lock"""
+        """Release only the lease owned by this coroutine."""
         key = f"{LOCK_KEY}{lock_name}"
-        await self._redis.delete(key)
+        held_locks = dict(self._held_locks.get())
+        token = held_locks.pop(lock_name, None)
+        self._held_locks.set(held_locks)
+        if token is None or self._redis is None:
+            return
+        try:
+            await self._redis.eval(LOCK_RELEASE_SCRIPT, 1, key, token)
+        except Exception as e:
+            logger.debug(f"Could not release matchmaking lock {lock_name}: {e}")
+
+    async def _run_resilient_search(self, search, user_id: str) -> None:
+        """Retry a per-player search after transient Redis errors."""
+        delay = 0.5
+        while True:
+            if not self._redis_connected:
+                await asyncio.sleep(min(delay, 3))
+                delay = min(delay * 2, 5)
+                continue
+            try:
+                await search(user_id)
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Matchmaking search failed for %s; retrying", user_id)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 5)
 
     async def add_to_queue(
         self,
@@ -263,7 +323,7 @@ class MatchmakingService:
             raise
             
         # Start search loop in background
-        asyncio.create_task(self._find_match(user_id))
+        asyncio.create_task(self._run_resilient_search(self._find_match, user_id))
 
     async def remove_from_queue(self, user_id: str) -> None:
         """Remove player from queue"""
@@ -413,7 +473,7 @@ class MatchmakingService:
         """
         
         # 1. Acquire lock for SELF to ensure I'm not being matched by someone else right now
-        lock_acquired = await self._acquire_lock(user_id, timeout=2.0)
+        lock_acquired = await self._acquire_lock(user_id, timeout=10.0)
         if not lock_acquired:
             return False
             
@@ -449,7 +509,7 @@ class MatchmakingService:
                 # In real prod, fetch candidate Elo and compare diff.
                 
                 # Try to lock opponent
-                opponent_lock = await self._acquire_lock(candidate, timeout=2.0)
+                opponent_lock = await self._acquire_lock(candidate, timeout=10.0)
                 if opponent_lock:
                     try:
                         # Verify opponent state
@@ -570,7 +630,7 @@ class MatchmakingService:
 
     async def _create_bot_match(self, user_id: str) -> bool:
         """Create a match against a bot"""
-        lock_acquired = await self._acquire_lock(user_id, timeout=2.0)
+        lock_acquired = await self._acquire_lock(user_id, timeout=10.0)
         if not lock_acquired:
             return False
             
@@ -670,7 +730,7 @@ class MatchmakingService:
             self._training_callbacks.pop(user_id, None)
             raise
             
-        asyncio.create_task(self._find_training_match(user_id))
+        asyncio.create_task(self._run_resilient_search(self._find_training_match, user_id))
         
     async def remove_from_training_queue(self, user_id: str) -> None:
         self._training_callbacks.pop(user_id, None)
@@ -736,7 +796,7 @@ class MatchmakingService:
             
     async def _try_match_training(self, user_id: str) -> bool:
         """Try match training FIFO - Simplified version of ranked logic"""
-        lock_acquired = await self._acquire_lock(f"training:{user_id}", timeout=2.0)
+        lock_acquired = await self._acquire_lock(f"training:{user_id}", timeout=10.0)
         if not lock_acquired: return False
         
         try:
@@ -749,7 +809,7 @@ class MatchmakingService:
             
             opponent_id = None
             for candidate in filtered:
-                opp_lock = await self._acquire_lock(f"training:{candidate}", timeout=2.0)
+                opp_lock = await self._acquire_lock(f"training:{candidate}", timeout=10.0)
                 if opp_lock:
                     try:
                         c_score = await self._redis.zscore(TRAINING_QUEUE_KEY, candidate)
@@ -862,7 +922,7 @@ class MatchmakingService:
             self._friends_list.pop(user_id, None)
             raise
             
-        asyncio.create_task(self._find_friends_match(user_id))
+        asyncio.create_task(self._run_resilient_search(self._find_friends_match, user_id))
         
     async def remove_from_friends_queue(self, user_id: str) -> None:
         self._friends_callbacks.pop(user_id, None)
@@ -936,7 +996,7 @@ class MatchmakingService:
                 # We should have stored friends list in Redis or just fetch friend list from DB.
                 # For now, let's just proceed with basic matching.
                 
-                opp_lock = await self._acquire_lock(f"friends:{candidate}", timeout=2.0)
+                opp_lock = await self._acquire_lock(f"friends:{candidate}", timeout=10.0)
                 if opp_lock:
                     try:
                         if await self._redis.sismember(FRIENDS_MATCHED_KEY, candidate): continue

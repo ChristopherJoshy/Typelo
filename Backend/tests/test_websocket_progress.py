@@ -28,6 +28,14 @@ class WebSocketProgressTests(unittest.TestCase):
                     return message
             self.fail(f'No {expected} message received')
 
+        def receive_progress(socket, expected_char_index):
+            for _ in range(20):
+                message = socket.receive_json()
+                if (message.get('type') == 'OPPONENT_PROGRESS'
+                        and message.get('char_index') == expected_char_index):
+                    return message
+            self.fail(f'No progress message with char_index {expected_char_index}')
+
         try:
             with patch.object(Database, 'get_db', return_value=fake_db), \
                  patch('app.routers.auth.verify_guest_token', side_effect=lambda token: token), \
@@ -42,9 +50,15 @@ class WebSocketProgressTests(unittest.TestCase):
                             first.send_json({'type': 'PING', 'timestamp': 12345})
                             self.assertEqual(receive_type(first, 'PONG')['timestamp'], 12345)
                             first.send_json({'type': 'KEYSTROKE', 'char': 'c', 'timestamp': 1000, 'char_index': 0})
-                            self.assertEqual(receive_type(second, 'OPPONENT_PROGRESS')['char_index'], 1)
+                            progress = receive_progress(second, 1)
+                            self.assertEqual(progress['char_index'], 1)
+                            self.assertEqual(progress['match_id'], 'match')
+                            first_sequence = progress['sequence']
                             first.send_json({'type': 'KEYSTROKE', 'char': '\b', 'timestamp': 1200, 'char_index': 0})
-                            self.assertEqual(receive_type(second, 'OPPONENT_PROGRESS')['char_index'], 0)
+                            progress = receive_progress(second, 0)
+                            self.assertEqual(progress['char_index'], 0)
+                            self.assertEqual(progress['match_id'], 'match')
+                            self.assertGreater(progress['sequence'], first_sequence)
         finally:
             match.game_service._sessions.pop('match', None)
             match.game_service._player_sessions.pop('one', None)

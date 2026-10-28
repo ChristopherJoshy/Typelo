@@ -27,16 +27,18 @@
 # --------------------------------------------------------------------------
 #                                   imports
 # --------------------------------------------------------------------------
-# motor.motor_asyncio: Async MongoDB driver.
+# pymongo.AsyncMongoClient: Native asyncio MongoDB driver.
 # typing: Type hints.
 # logging: Logging.
 # app.config.get_settings: App settings.
 
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo import AsyncMongoClient
 from typing import Optional
+from typing import Any
 import logging
 
 from app.config import get_settings
+from app.constants import MONGODB_MAX_POOL_SIZE, MONGODB_MIN_POOL_SIZE, MONGODB_SERVER_SELECTION_TIMEOUT_MS
 
 logger = logging.getLogger(__name__)
 
@@ -44,15 +46,25 @@ logger = logging.getLogger(__name__)
 class Database:
     """MongoDB database connection manager"""
     
-    client: Optional[AsyncIOMotorClient] = None
-    db: Optional[AsyncIOMotorDatabase] = None
+    client: Optional[AsyncMongoClient] = None
+    db: Optional[Any] = None
     
     @classmethod
     async def connect(cls) -> None:
         """Establish connection to MongoDB"""
         settings = get_settings()
         try:
-            cls.client = AsyncIOMotorClient(settings.mongodb_uri)
+            cls.client = AsyncMongoClient(
+                settings.mongodb_uri,
+                maxPoolSize=MONGODB_MAX_POOL_SIZE,
+                minPoolSize=MONGODB_MIN_POOL_SIZE,
+                maxConnecting=4,
+                serverSelectionTimeoutMS=MONGODB_SERVER_SELECTION_TIMEOUT_MS,
+                connectTimeoutMS=MONGODB_SERVER_SELECTION_TIMEOUT_MS,
+                waitQueueTimeoutMS=MONGODB_SERVER_SELECTION_TIMEOUT_MS,
+                retryReads=True,
+                retryWrites=True,
+            )
             cls.db = cls.client[settings.mongodb_database]
             
             # Verify connection
@@ -64,13 +76,23 @@ class Database:
             
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
+            client = cls.client
+            cls.client = None
+            cls.db = None
+            if client is not None:
+                try:
+                    await client.close()
+                except Exception as close_error:
+                    logger.warning(f"Failed to close MongoDB client after startup error: {close_error}")
             raise
     
     @classmethod
     async def disconnect(cls) -> None:
         """Close MongoDB connection"""
         if cls.client:
-            cls.client.close()
+            await cls.client.close()
+            cls.client = None
+            cls.db = None
             logger.info("Disconnected from MongoDB")
     
     @classmethod
@@ -163,7 +185,7 @@ class Database:
             return False
     
     @classmethod
-    def get_db(cls) -> AsyncIOMotorDatabase:
+    def get_db(cls) -> Any:
         """Get database instance"""
         if cls.db is None:
             raise RuntimeError("Database not connected. Call Database.connect() first.")
@@ -171,6 +193,6 @@ class Database:
 
 
 # Convenience functions
-async def get_database() -> AsyncIOMotorDatabase:
+async def get_database() -> Any:
     """Dependency for getting database in routes"""
     return Database.get_db()

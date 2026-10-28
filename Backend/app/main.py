@@ -94,23 +94,22 @@ async def lifespan(app: FastAPI):
     
     await matchmaking_service.init_redis()
     pending_cleanup = asyncio.create_task(matchmaking_service._periodic_pending_cleanup())
-    
-    yield
-    
-    logger.info("Graceful shutdown: ending active games...")
-    pending_cleanup.cancel()
-    active_matches = list(game_service._sessions.keys())
-    for match_id in active_matches:
-        try:
-            await game_service.end_game(match_id)
-            logger.info(f"Ended active game: {match_id}")
-        except Exception as e:
-            logger.warning(f"Failed to end game {match_id}: {e}")
-    
-    logger.info(f"Ended {len(active_matches)} active games during shutdown")
-    
-    await Database.disconnect()
-    logger.info("Evotaion Backend shutting down...")
+    redis_monitor = asyncio.create_task(matchmaking_service.monitor_redis())
+
+    try:
+        yield
+    finally:
+        logger.info("Graceful shutdown: stopping background tasks...")
+        for task in (pending_cleanup, redis_monitor):
+            task.cancel()
+        await asyncio.gather(pending_cleanup, redis_monitor, return_exceptions=True)
+
+        # A server restart must not turn an unfinished match into a win/loss,
+        # award currency, or change ELO based on an arbitrary shutdown time.
+        await game_service.abort_active_games("server_restart")
+        await matchmaking_service.close_redis()
+        await Database.disconnect()
+        logger.info("Evotaion Backend shutting down...")
 
 app = FastAPI(
     title="typelo",

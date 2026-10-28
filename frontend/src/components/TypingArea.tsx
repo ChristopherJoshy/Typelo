@@ -58,6 +58,12 @@ interface TypingAreaProps {
   opponentEffect?: string | null
 }
 
+// One small burst per moving cursor every 100 ms keeps expensive cosmetic
+// particles readable on mobile while the underlying carets still move on each
+// accepted input update.
+let lastPlayerBurstAt = 0
+let lastOpponentBurstAt = 0
+
 // --- Cursor Burst Sub-Component (Ephemeral) ---
 const CursorBurst = memo(({ type, color, onComplete }: { type: string, color: string, onComplete?: () => void }) => {
   const baseColor = color === 'rainbow' ? '#ec4899' : color
@@ -65,13 +71,13 @@ const CursorBurst = memo(({ type, color, onComplete }: { type: string, color: st
   useEffect(() => {
     const timer = setTimeout(() => {
       onComplete?.()
-    }, 1200)
+    }, 850)
     return () => clearTimeout(timer)
   }, [onComplete])
 
   const renderParticles = (count: number, particleStyle: (i: number) => React.CSSProperties, animStyle: (i: number) => object) => (
     <span className="absolute inset-0 pointer-events-none overflow-visible flex items-center justify-center z-30">
-      {[...Array(count)].map((_, i) => (
+      {[...Array(Math.min(count, 5))].map((_, i) => (
         <motion.span
           key={i}
           className="absolute rounded-full"
@@ -98,7 +104,7 @@ const CursorBurst = memo(({ type, color, onComplete }: { type: string, color: st
     case 'lava':
       return (
         <span className="absolute inset-0 pointer-events-none overflow-visible z-30">
-          {[...Array(12)].map((_, i) => ( // Increased count
+            {[...Array(5)].map((_, i) => (
             <motion.span
               key={i}
               className="absolute bottom-0 left-1/2 rounded-full"
@@ -205,7 +211,7 @@ const CursorBurst = memo(({ type, color, onComplete }: { type: string, color: st
     case 'hearts':
       return (
         <span className="absolute inset-0 pointer-events-none overflow-visible flex items-center justify-center z-30">
-          {[...Array(6)].map((_, i) => ( // Increased count to 6
+          {[...Array(4)].map((_, i) => (
             <motion.svg
               key={i}
               viewBox="0 0 24 24"
@@ -243,7 +249,7 @@ const CursorBurst = memo(({ type, color, onComplete }: { type: string, color: st
     case 'wind':
       return (
         <span className="absolute inset-0 pointer-events-none overflow-visible z-30">
-          {[...Array(6)].map((_, i) => ( // Increased count
+          {[...Array(4)].map((_, i) => (
             <motion.span
               key={i}
               className="absolute left-0 rounded-full"
@@ -375,7 +381,11 @@ const MemoizedCharacter = memo(({
   // Trigger Player Burst
   useEffect(() => {
     if (playerConfig.effect && status === 'correct' && prevStatusRef.current !== 'correct') {
-      setShowPlayerBurst(true)
+      const now = performance.now()
+      if (now - lastPlayerBurstAt >= 100) {
+        lastPlayerBurstAt = now
+        setShowPlayerBurst(true)
+      }
     }
     prevStatusRef.current = status
   }, [status, playerConfig.effect])
@@ -383,7 +393,11 @@ const MemoizedCharacter = memo(({
   // Trigger Opponent Burst
   useEffect(() => {
     if (opponentConfig.effect && isOpponentPast && !prevOppPastRef.current) {
-      setShowOpponentBurst(true)
+      const now = performance.now()
+      if (now - lastOpponentBurstAt >= 100) {
+        lastOpponentBurstAt = now
+        setShowOpponentBurst(true)
+      }
     }
     prevOppPastRef.current = isOpponentPast
   }, [isOpponentPast, opponentConfig.effect])

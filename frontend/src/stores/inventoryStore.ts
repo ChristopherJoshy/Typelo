@@ -283,6 +283,10 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
         try {
             const result = await spinProfileCrateApi(token)
 
+            if (result.coinsWon) {
+                set((state) => ({ coins: state.coins + result.coinsWon! }))
+            }
+
             if (result.type === 'background' && result.itemId) {
                 set((state) => ({
                     unlockedBackgrounds: state.unlockedBackgrounds.includes(result.itemId!)

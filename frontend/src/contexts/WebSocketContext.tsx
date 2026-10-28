@@ -73,6 +73,7 @@ const WebSocketContext = createContext<WebSocketContextType | null>(null)
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
+  const connectionStableTimeoutRef = useRef<number | null>(null)
   const heartbeatIntervalRef = useRef<number | null>(null)
   const shouldReconnectRef = useRef<boolean>(false)
   // Guard to prevent multiple simultaneous connection attempts
@@ -94,6 +95,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const gameEventOwnerRef = useRef<string | null>(user?.uid ?? null)
   const nextGameEventIdRef = useRef(1)
   const lastSentGameEventIdRef = useRef(0)
+  const lastOpponentProgressRef = useRef<{ matchId: string | null; sequence: number }>({
+    matchId: null,
+    sequence: -1,
+  })
   const {
     matchFound,
     startGame,
@@ -137,6 +142,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           opponentEffect: rawMatch.opponent_effect || rawMatch.opponentEffect || null,
         }
         matchFound(matchInfo)
+        lastOpponentProgressRef.current = { matchId: matchInfo.matchId, sequence: -1 }
 
         // Play match-found sound
         // Play match-found sound
@@ -169,7 +175,23 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       case 'OPPONENT_PROGRESS':
         // Backend sends snake_case, we need to map to camelCase
         const rawProgress = message as any
+        // Progress can be queued while a socket is draining. Ignore updates
+        // left over from a previous match after the player has re-queued.
+        const progressMatchId = rawProgress.match_id ?? rawProgress.matchId
+        const currentMatchId = useGameStore.getState().matchInfo?.matchId
+        if (progressMatchId && progressMatchId !== currentMatchId) break
+
+        const progressSequence = rawProgress.sequence
+        if (Number.isInteger(progressSequence) && progressSequence >= 0) {
+          if (lastOpponentProgressRef.current.matchId !== currentMatchId) {
+            lastOpponentProgressRef.current = { matchId: currentMatchId ?? null, sequence: -1 }
+          }
+          if (progressSequence <= lastOpponentProgressRef.current.sequence) break
+          lastOpponentProgressRef.current.sequence = progressSequence
+        }
+
         const rawCharIndex = rawProgress.char_index ?? rawProgress.charIndex ?? 0
+        if (!Number.isInteger(rawCharIndex) || rawCharIndex < 0) break
 
         // Improve Word Index Handling:
         // If word_index is missing/undefined, default to current store state instead of 0
@@ -178,6 +200,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         if (rawWordIndex === undefined || rawWordIndex === null) {
           rawWordIndex = useGameStore.getState().opponentWordIndex
         }
+        if (!Number.isInteger(rawWordIndex) || rawWordIndex < 0) break
 
         updateOpponentProgress(
           rawCharIndex,
@@ -430,7 +453,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         lastSentGameEventIdRef.current = 0
         isConnectingRef.current = false
         setIsConnected(true)
-        reconnectAttemptRef.current = 0 // Reset backoff on successful connection
+        // Only reset backoff after the socket has remained useful. Resetting
+        // on every short-lived open turns a backend that immediately drops
+        // the connection into a permanent one-second reconnect loop.
+        if (connectionStableTimeoutRef.current !== null) {
+          clearTimeout(connectionStableTimeoutRef.current)
+        }
+        connectionStableTimeoutRef.current = window.setTimeout(() => {
+          reconnectAttemptRef.current = 0
+          connectionStableTimeoutRef.current = null
+        }, 10000)
         if (import.meta.env.DEV) console.log('WebSocket connected')
 
         // Start heartbeat ping every 25 seconds to keep connection alive
@@ -468,9 +500,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       ws.onclose = (event) => {
         // if (import.meta.env.DEV) console.log('WebSocket closed', event.code, event.reason)
+        // A late close from an old socket must not tear down a newer one.
+        if (wsRef.current !== ws) return
         wsRef.current = null
         isConnectingRef.current = false
         setIsConnected(false)
+        if (connectionStableTimeoutRef.current !== null) {
+          clearTimeout(connectionStableTimeoutRef.current)
+          connectionStableTimeoutRef.current = null
+        }
 
         // Stop heartbeat
         if (heartbeatIntervalRef.current) {
@@ -510,6 +548,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = null
     }
+    if (connectionStableTimeoutRef.current !== null) {
+      clearTimeout(connectionStableTimeoutRef.current)
+      connectionStableTimeoutRef.current = null
+    }
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current)
+      heartbeatIntervalRef.current = null
+    }
+    setIsConnected(false)
     if (wsRef.current) {
       wsRef.current.close()
       wsRef.current = null

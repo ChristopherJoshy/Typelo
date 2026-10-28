@@ -1,7 +1,9 @@
 import unittest
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.services import game as game_module
 from app.models.user import get_rank_from_elo
 from app.services.game import GameService, GameSession, MatchState, PlayerState
 
@@ -45,10 +47,20 @@ class MatchProgressTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_late_timer_uses_the_scheduled_deadline(self):
         self.session.started_at = datetime.now(timezone.utc) - timedelta(seconds=40)
-        with patch('app.services.game.asyncio.sleep', new_callable=AsyncMock) as sleep, \
+        fake_clock = [100.0]
+        sleep_calls = []
+
+        async def advance_sleep(delay):
+            sleep_calls.append(delay)
+            fake_clock[0] += delay
+
+        with patch.object(game_module, 'time', SimpleNamespace(monotonic=lambda: fake_clock[0])), \
+             patch.object(game_module, 'asyncio', SimpleNamespace(sleep=advance_sleep)), \
              patch.object(self.service, 'end_game', new_callable=AsyncMock) as end_game:
             await self.service._game_timer(self.session)
-        sleep.assert_awaited_once_with(0)
+
+        self.assertEqual(sleep_calls[0], 0)
+        self.assertEqual(sleep_calls[1], game_module.INPUT_DELIVERY_GRACE_SECONDS)
         end_game.assert_awaited_once_with('match')
 
     async def test_delayed_input_is_accepted_only_when_sent_near_match_deadline(self):

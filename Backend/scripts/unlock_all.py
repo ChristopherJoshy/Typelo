@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 # Add parent directory to path so we can import app
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,7 +22,7 @@ TARGET_USER_UID = "xOAB2eOuwpcsSBgbLxOfGMEWF5f1"
 
 async def unlock_all():
     print(f"Connecting to MongoDB: {MONGODB_DATABASE}...")
-    client = AsyncIOMotorClient(MONGODB_URI)
+    client = AsyncMongoClient(MONGODB_URI)
     db = client[MONGODB_DATABASE]
     
     try:
@@ -55,7 +55,7 @@ async def unlock_all():
     else:
         print("User not found!")
         
-    client.close()
+    await client.close()
 
 if __name__ == "__main__":
     asyncio.run(unlock_all())

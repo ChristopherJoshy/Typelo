@@ -45,6 +45,7 @@ import logging
 import random
 
 from app.database import Database
+from app.services.gacha import unique_reward_weights
 from app.constants import (
     CURSORS, EFFECTS, GACHA_WEIGHTS, SPIN_COST, LUCK_BOOST_WEIGHTS, PITY_STREAK_THRESHOLD,
     PROFILE_BACKGROUNDS, PROFILE_EFFECTS, PROFILE_BORDERS,
@@ -218,7 +219,8 @@ async def get_item_stats():
         }}
     ]
     
-    async for user in db.users.aggregate(pipeline):
+    cursor = await db.users.aggregate(pipeline)
+    async for user in cursor:
         for cursor_id in user.get("unlocked_cursors", []):
             if cursor_id in cursor_counts:
                 cursor_counts[cursor_id] += 1
@@ -326,41 +328,22 @@ async def spin_gacha(current_user: UserInfo = Depends(get_current_user)):
     current_weights = LUCK_BOOST_WEIGHTS.copy() if use_luck_boost else GACHA_WEIGHTS.copy()
     
     if use_luck_boost:
-        # Smart Luck: Prevent rolling rarities that are fully collected to avoid coin fallback
         unlocked_cursors_set = set(user.get("unlocked_cursors", ["default"]))
         unlocked_effects_set = set(user.get("unlocked_effects", []))
-        
-        # Check availability
-        has_available = {
-            "common": False, "uncommon": False, "rare": False, "epic": False, 
-            "legendary": False, "legendary_effect": False, "mythical": False
-        }
-        
-        for c_id, c_data in CURSORS.items():
-            if c_id not in unlocked_cursors_set:
-                has_available[c_data["rarity"]] = True
-                
-        for e_id, e_data in EFFECTS.items():
-            if e_id not in unlocked_effects_set:
-                has_available[f'{e_data["rarity"]}_effect'] = True
 
-        # Zero out weights for fully collected rarities
-        available_weight_sum = 0
-        for r_key in current_weights:
-            if r_key == "better_luck_next_time":
-                continue
-            if not has_available.get(r_key, False):
-                current_weights[r_key] = 0
-            available_weight_sum += current_weights[r_key]
-        
-        # If user has collected EVERYTHING available in the luck pool, 
-        # we must fallback to something (coins) to avoid crash.
-        # But if there is at least one item type available, we guarantee an item.
-        if available_weight_sum == 0:
-            # Fallback: Restore 'legendary' weight to allowed coins fallback via invalid item
-            # Or just use default weights which allow coins?
-            # Let's just reset to coins_10 to give them money.
-             current_weights = {"coins_10": 100}
+        available_items_by_outcome = {}
+        for c_id, c_data in CURSORS.items():
+            available_items_by_outcome.setdefault(c_data["rarity"], []).append(c_id)
+        for e_id, e_data in EFFECTS.items():
+            available_items_by_outcome.setdefault(f'{e_data["rarity"]}_effect', []).append(e_id)
+        available_items_by_outcome = {
+            outcome: [
+                item_id for item_id in item_ids
+                if item_id not in (unlocked_effects_set if outcome.endswith("_effect") else unlocked_cursors_set)
+            ]
+            for outcome, item_ids in available_items_by_outcome.items()
+        }
+        current_weights = unique_reward_weights(current_weights, available_items_by_outcome)
 
     # Select Outcome
     outcomes = list(current_weights.keys())
@@ -622,11 +605,12 @@ class ProfileInventoryResponse(BaseModel):
     profile_crates_opened: int = 0
 
 class ProfileSpinResult(BaseModel):
-    type: str  # "background", "profile_effect", or "border"
+    type: str  # "background", "profile_effect", "border", "coins", or "nothing"
     item_id: Optional[str] = None
     background_info: Optional[ProfileBackgroundInfo] = None
     effect_info: Optional[ProfileEffectInfo] = None
     border_info: Optional[ProfileBorderInfo] = None
+    coins_won: Optional[int] = None
     is_new: bool = False
     pity_activated: bool = False
     pity_streak: int = 0
@@ -740,11 +724,48 @@ async def spin_profile_crate(current_user: UserInfo = Depends(get_current_user))
     use_luck_boost = pity_streak >= PROFILE_PITY_STREAK_THRESHOLD or bonus['is_top_player']
     
     current_weights = PROFILE_LUCK_BOOST_WEIGHTS.copy() if use_luck_boost else PROFILE_GACHA_WEIGHTS.copy()
+
+    if use_luck_boost:
+        rank_backgrounds = {"rank_bronze", "rank_gold", "rank_platinum", "rank_ranker"}
+        unlocked_by_type = {
+            "bg": set(user.get("unlocked_backgrounds", [])),
+            "effect": set(user.get("unlocked_profile_effects", [])),
+            "border": set(user.get("unlocked_borders", [])),
+        }
+        available_items_by_outcome = {}
+        for item_id, item in PROFILE_BACKGROUNDS.items():
+            if item_id not in rank_backgrounds:
+                available_items_by_outcome.setdefault(f'{item["rarity"]}_bg', []).append(item_id)
+        for item_id, item in PROFILE_EFFECTS.items():
+            available_items_by_outcome.setdefault(f'{item["rarity"]}_effect', []).append(item_id)
+        for item_id, item in PROFILE_BORDERS.items():
+            available_items_by_outcome.setdefault(f'{item["rarity"]}_border', []).append(item_id)
+        available_items_by_outcome = {
+            outcome: [
+                item_id for item_id in item_ids
+                if item_id not in unlocked_by_type[outcome.rsplit("_", 1)[1]]
+            ]
+            for outcome, item_ids in available_items_by_outcome.items()
+        }
+        current_weights = unique_reward_weights(current_weights, available_items_by_outcome)
     
     # Select outcome
     outcomes = list(current_weights.keys())
     weights = list(current_weights.values())
     result = random.choices(outcomes, weights=weights, k=1)[0]
+
+    if result == "coins_10":
+        update_result = await db.users.update_one(
+            {"firebase_uid": current_user.uid, "coins": {"$gte": actual_spin_cost},
+             "profile_crates_opened": user["profile_crates_opened"] if "profile_crates_opened" in user else {"$exists": False}},
+            {
+                "$inc": {"coins": -actual_spin_cost + 10, "profile_crates_opened": 1},
+                "$set": {"profile_pity_streak": 0},
+            }
+        )
+        if update_result.matched_count == 0:
+            raise HTTPException(status_code=400, detail="Transaction failed: concurrent request detected")
+        return ProfileSpinResult(type="coins", coins_won=10, pity_streak=0)
     
     # Handle better_luck_next_time (95% chance - no reward)
     if result == "better_luck_next_time":
@@ -948,6 +969,11 @@ async def spin_profile_crate(current_user: UserInfo = Depends(get_current_user))
                 is_new=True
             )
     
+    # Match cursor-crate duplicate handling: return a small coin refund when
+    # this rarity is already fully collected.
+    if spin_result_obj is not None and not spin_result_obj.is_new:
+        spin_result_obj = ProfileSpinResult(type="coins", coins_won=10)
+
     # Set pity info
     spin_result_obj.pity_streak = new_streak
     spin_result_obj.pity_activated = (new_streak >= PROFILE_PITY_STREAK_THRESHOLD) and (not use_luck_boost)
@@ -960,7 +986,7 @@ async def spin_profile_crate(current_user: UserInfo = Depends(get_current_user))
             "profile_crates_opened": user["profile_crates_opened"] if "profile_crates_opened" in user else {"$exists": False},
         },
         {
-            "$inc": {"coins": -actual_spin_cost, "profile_crates_opened": 1},
+            "$inc": {"coins": -actual_spin_cost + (spin_result_obj.coins_won or 0), "profile_crates_opened": 1},
             "$set": {
                 "profile_pity_streak": new_streak
             },

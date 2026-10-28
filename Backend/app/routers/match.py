@@ -54,6 +54,7 @@ import json
 import asyncio
 import logging
 import time
+from weakref import WeakKeyDictionary
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from typing import Optional, Dict
 
@@ -97,6 +98,11 @@ class ConnectionManager:
         self._pending_results: Dict[str, tuple[float, dict]] = {}
         self._pending_progress: Dict[str, dict] = {}
         self._progress_tasks: Dict[str, asyncio.Task] = {}
+        self._progress_sequences: Dict[str, int] = {}
+        # Progress, acknowledgements, pings, and broadcasts can all write to
+        # one socket. Serialize those writes so ASGI never sees overlapping
+        # sends for the same WebSocket connection.
+        self._socket_send_locks: WeakKeyDictionary[WebSocket, asyncio.Lock] = WeakKeyDictionary()
     
     def get_client_ip(self, websocket: WebSocket) -> str:
         forwarded = websocket.headers.get("x-forwarded-for")
@@ -202,6 +208,8 @@ class ConnectionManager:
             del self._ip_to_user[ip]
 
     async def send_json(self, user_id: str, data: dict):
+        if data.get("type") == "OPPONENT_PROGRESS":
+            data = self._with_progress_sequence(user_id, data)
         websocket = self.active_connections.get(user_id)
         if websocket is None and data.get("type") == "GAME_END":
             now = time.monotonic()
@@ -209,16 +217,40 @@ class ConnectionManager:
             self._pending_results[user_id] = (now + 60, data)
         if websocket is not None:
             try:
-                await websocket.send_json(data)
+                await self._send_on_socket(user_id, websocket, data, timeout=3)
             except Exception as e:
                 logger.error(f"Error sending JSON to {user_id}: {e}")
                 self.disconnect(user_id, websocket)
                 if data.get("type") == "GAME_END":
                     self._pending_results[user_id] = (time.monotonic() + 60, data)
 
+    def _with_progress_sequence(self, user_id: str, data: dict) -> dict:
+        """Stamp progress at enqueue time so coalescing never hides its order."""
+        sequence = self._progress_sequences.get(user_id, 0) + 1
+        self._progress_sequences[user_id] = sequence
+        return {**data, "sequence": sequence}
+
+    async def _send_on_socket(self, user_id: str, websocket: WebSocket, data: dict, timeout: float) -> bool:
+        """Send one message without overlapping any other write on this socket."""
+        lock = self._socket_send_locks.get(websocket)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._socket_send_locks[websocket] = lock
+
+        async def send_if_current() -> bool:
+            async with lock:
+                # A reconnect may replace the socket while this send waits for
+                # the previous frame to drain. Never write to a stale socket.
+                if self.active_connections.get(user_id) is not websocket:
+                    return False
+                await websocket.send_json(data)
+                return True
+
+        return await asyncio.wait_for(send_if_current(), timeout=timeout)
+
     def publish_progress(self, user_id: str, data: dict):
         """Coalesce cursor updates so a slow socket only receives the latest position."""
-        self._pending_progress[user_id] = data
+        self._pending_progress[user_id] = self._with_progress_sequence(user_id, data)
         task = self._progress_tasks.get(user_id)
         if task is None or task.done():
             self._progress_tasks[user_id] = asyncio.create_task(self._flush_progress(user_id))
@@ -230,7 +262,7 @@ class ConnectionManager:
                 websocket = self.active_connections.get(user_id)
                 if websocket is not None:
                     try:
-                        await asyncio.wait_for(websocket.send_json(data), timeout=1)
+                        await self._send_on_socket(user_id, websocket, data, timeout=1)
                     except Exception:
                         self.disconnect(user_id, websocket)
                         try:
@@ -279,7 +311,7 @@ class ConnectionManager:
     async def _broadcast(self, message: dict):
         async def send_one(user_id: str, websocket: WebSocket):
             try:
-                await asyncio.wait_for(websocket.send_json(message), timeout=3)
+                await self._send_on_socket(user_id, websocket, message, timeout=3)
             except Exception:
                 self.disconnect(user_id, websocket)
 
@@ -508,11 +540,13 @@ async def match_websocket(
         await manager.send_json(user_id, OpponentProgressMessage(
             char_index=opponent.current_char_index,
             word_index=opponent.current_word_index,
+            match_id=active_session.match_id,
         ).model_dump())
         if not opponent.is_bot:
             manager.publish_progress(opponent.uid, OpponentProgressMessage(
                 char_index=current_player.current_char_index,
                 word_index=current_player.current_word_index,
+                match_id=active_session.match_id,
             ).model_dump())
     
     try:
@@ -666,7 +700,8 @@ async def match_websocket(
                         async def on_opponent_progress(char_index: int, word_index: int):
                             progress_msg = OpponentProgressMessage(
                                 char_index=char_index,
-                                word_index=word_index
+                                word_index=word_index,
+                                match_id=pending.match_id,
                             )
                             manager.publish_progress(user_id, progress_msg.model_dump())
                         
@@ -847,7 +882,8 @@ async def match_websocket(
                         async def on_opponent_progress(char_index: int, word_index: int):
                             progress_msg = OpponentProgressMessage(
                                 char_index=char_index,
-                                word_index=word_index
+                                word_index=word_index,
+                                match_id=pending.match_id,
                             )
                             manager.publish_progress(user_id, progress_msg.model_dump())
                         
@@ -1000,7 +1036,8 @@ async def match_websocket(
                         async def on_opponent_progress(char_index: int, word_index: int):
                             progress_msg = OpponentProgressMessage(
                                 char_index=char_index,
-                                word_index=word_index
+                                word_index=word_index,
+                                match_id=pending.match_id,
                             )
                             manager.publish_progress(user_id, progress_msg.model_dump())
                         
@@ -1124,7 +1161,8 @@ async def match_websocket(
                         last_sent_char_index = current_player.current_char_index
                         progress_msg = OpponentProgressMessage(
                             char_index=current_player.current_char_index,
-                            word_index=current_player.current_word_index
+                            word_index=current_player.current_word_index,
+                            match_id=current_match_id,
                         )
                         manager.publish_progress(opponent.uid, progress_msg.model_dump())
             
@@ -1165,7 +1203,8 @@ async def match_websocket(
                         last_sent_char_index = current_player.current_char_index
                         progress_msg = OpponentProgressMessage(
                             char_index=current_player.current_char_index,
-                            word_index=current_player.current_word_index
+                            word_index=current_player.current_word_index,
+                            match_id=current_match_id,
                         )
                         manager.publish_progress(opponent.uid, progress_msg.model_dump())
     

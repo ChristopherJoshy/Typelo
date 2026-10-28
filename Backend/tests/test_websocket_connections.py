@@ -39,6 +39,27 @@ class ConnectionTests(unittest.IsolatedAsyncioTestCase):
         release.set()
         await broadcast
 
+    async def test_writes_to_one_socket_are_serialized(self):
+        manager = ConnectionManager()
+        socket = AsyncMock()
+        manager.active_connections['user'] = socket
+        sending = False
+        overlapped = []
+
+        async def record_send(_):
+            nonlocal sending
+            if sending:
+                overlapped.append(True)
+            sending = True
+            await asyncio.sleep(0.01)
+            sending = False
+
+        socket.send_json.side_effect = record_send
+        first = asyncio.create_task(manager._send_on_socket('user', socket, {'type': 'ONE'}, 1))
+        second = asyncio.create_task(manager._send_on_socket('user', socket, {'type': 'TWO'}, 1))
+        self.assertEqual(await asyncio.gather(first, second), [True, True])
+        self.assertEqual(overlapped, [])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -564,13 +564,14 @@ export async function spinProfileCrate(token: string): Promise<ProfileSpinResult
       animation?: string
       rarity: string
     }
+    coins_won?: number
     is_new?: boolean
     pity_activated?: boolean
     pity_streak?: number
   }>(`${API_BASE_URL}/api/shop/profile-spin`, { method: 'POST' }, token)
 
   return {
-    type: response.type as 'background' | 'profile_effect' | 'border',
+    type: response.type as 'background' | 'profile_effect' | 'border' | 'coins' | 'nothing',
     itemId: response.item_id,
     backgroundInfo: response.background_info ? {
       id: response.background_info.id,
@@ -596,6 +597,7 @@ export async function spinProfileCrate(token: string): Promise<ProfileSpinResult
       animation: response.border_info.animation,
       rarity: response.border_info.rarity as CursorRarity,
     } : undefined,
+    coinsWon: response.coins_won,
     isNew: response.is_new,
     pityActivated: response.pity_activated,
     pityStreak: response.pity_streak,

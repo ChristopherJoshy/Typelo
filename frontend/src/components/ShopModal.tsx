@@ -116,6 +116,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
     const tickIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const lastTickRef = useRef<number>(0)
     const containerRef = useRef<HTMLDivElement>(null)
+    const winnerCardRef = useRef<HTMLDivElement>(null)
 
     const baseItems: SpinItem[] = useMemo(() => {
         const items: SpinItem[] = []
@@ -191,10 +192,15 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                 // Reset controller
                 await controls.set({ x: 0 })
 
-                // Calculate target position dynamically based on container width
-                const containerWidth = containerRef.current?.offsetWidth || (ITEM_WIDTH * VISIBLE_ITEMS)
-                const centerOffset = containerWidth / 2 - ITEM_WIDTH / 2
-                const targetX = -(ITEMS_BEFORE_WINNER * ITEM_WIDTH) + centerOffset
+                // Center the actual server-selected card using its rendered
+                // position, so CSS sizing and responsive layout cannot change
+                // which reward lands under the marker.
+                const containerRect = containerRef.current?.getBoundingClientRect()
+                const winnerRect = winnerCardRef.current?.getBoundingClientRect()
+                const containerWidth = containerRect?.width || ITEM_WIDTH * VISIBLE_ITEMS
+                const targetX = containerRect && winnerRect
+                    ? containerWidth / 2 - (winnerRect.left - containerRect.left + winnerRect.width / 2)
+                    : -(ITEMS_BEFORE_WINNER * ITEM_WIDTH) + (containerWidth / 2 - ITEM_WIDTH / 2)
 
                 // Start tick sounds
                 let tickCount = 0
@@ -382,6 +388,8 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                 }
             } else if (result.type === 'nothing') {
                 winningItem = { type: 'nothing', id: `profile-nothing-${Date.now()}` }
+            } else if (result.type === 'coins' && result.coinsWon) {
+                winningItem = { type: 'coins', coins: result.coinsWon, id: `profile-coins-${Date.now()}` }
             }
 
             if (!winningItem) {
@@ -832,9 +840,10 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                 animate={controls}
                                                 initial={{ x: 0 }}
                                             >
-                                                {displayItems.map((item) => (
+                                                {displayItems.map((item, index) => (
                                                     <div
                                                         key={item.id}
+                                                        ref={index === ITEMS_BEFORE_WINNER ? winnerCardRef : undefined}
                                                         className="flex-shrink-0 flex flex-col items-center justify-center p-2 border-r border-white/5"
                                                         style={{ width: ITEM_WIDTH, height: 120 }}
                                                     >
@@ -1020,7 +1029,16 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                     )
                                                 ) : (
                                                     // Profile crate reveal
-                                                    profileSpinResult?.type === 'background' && profileSpinResult.backgroundInfo ? (
+                                                    profileSpinResult?.type === 'coins' ? (
+                                                        <motion.div
+                                                            animate={{ scale: [1, 1.08, 1] }}
+                                                            transition={{ duration: 1.5, repeat: Infinity }}
+                                                            className="flex flex-col items-center gap-2"
+                                                        >
+                                                            <CoinIcon size={80} />
+                                                            <span className="font-mono text-lg font-bold text-amber-300">+{profileSpinResult.coinsWon ?? 10}</span>
+                                                        </motion.div>
+                                                    ) : profileSpinResult?.type === 'background' && profileSpinResult.backgroundInfo ? (
                                                         <motion.div
                                                             animate={{ scale: [1, 1.02, 1] }}
                                                             transition={{ duration: 2, repeat: Infinity }}
@@ -1092,6 +1110,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                         {profileSpinResult?.type === 'background' && profileSpinResult.backgroundInfo?.name}
                                                         {profileSpinResult?.type === 'profile_effect' && profileSpinResult.effectInfo?.name}
                                                         {profileSpinResult?.type === 'border' && profileSpinResult.borderInfo?.name}
+                                                        {profileSpinResult?.type === 'coins' && `+${profileSpinResult.coinsWon ?? 10} Coins`}
                                                         {profileSpinResult?.type === 'nothing' && 'Try Again!'}
                                                     </>
                                                 )}
@@ -1117,9 +1136,21 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                         {/* Text and Button */}
                                         <div className="text-center">
                                             <p className="text-white/60 text-sm mb-6">
-                                                {(activeRollType === 'cursor' ? spinResult?.isNew : profileSpinResult?.isNew)
-                                                    ? "You unlocked a new item!"
-                                                    : "You got a duplicate item (Coins refunded)"}
+                                                {activeRollType === 'cursor'
+                                                    ? spinResult?.type === 'nothing'
+                                                        ? 'No reward this time. Your pity progress has been saved.'
+                                                        : spinResult?.type === 'coins'
+                                                            ? `+${spinResult.coinsWon ?? 0} coins added to your balance.`
+                                                            : spinResult?.isNew
+                                                                ? 'You unlocked a new item!'
+                                                                : 'Already owned. Coins were refunded.'
+                                                    : profileSpinResult?.type === 'nothing'
+                                                        ? 'No reward this time. Your pity progress has been saved.'
+                                                        : profileSpinResult?.type === 'coins'
+                                                            ? `+${profileSpinResult.coinsWon ?? 0} coins added to your balance.`
+                                                            : profileSpinResult?.isNew
+                                                                ? 'You unlocked a new item!'
+                                                                : 'Already owned. Coins were refunded.'}
                                             </p>
 
                                             {/* Auto Spin Progress Indicator */}

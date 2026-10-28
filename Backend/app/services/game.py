@@ -198,8 +198,47 @@ class GameService:
         self._player_sessions: Dict[str, str] = {}  # uid -> match_id
         # Prevent simultaneous start_game calls for same match
         self._starting_matches: set[str] = set()
+        self._match_tasks: Dict[str, set[asyncio.Task]] = {}
         # Lock for thread-safe session creation
         self._session_lock = asyncio.Lock()
+
+    def _spawn_match_task(self, match_id: str, coroutine) -> asyncio.Task:
+        task = asyncio.create_task(coroutine)
+        self._match_tasks.setdefault(match_id, set()).add(task)
+        task.add_done_callback(lambda completed: self._forget_match_task(match_id, completed))
+        return task
+
+    def _forget_match_task(self, match_id: str, task: asyncio.Task) -> None:
+        tasks = self._match_tasks.get(match_id)
+        if tasks is None:
+            return
+        tasks.discard(task)
+        if not tasks:
+            self._match_tasks.pop(match_id, None)
+
+    async def abort_active_games(self, reason: str = "server_shutdown") -> None:
+        """Discard in-memory games on shutdown without awarding an arbitrary result."""
+        for match_id, session in list(self._sessions.items()):
+            session.state = MatchState.FINISHED
+            if session.bot:
+                session.bot.stop()
+            tasks = list(self._match_tasks.get(match_id, ()))
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            self._match_tasks.pop(match_id, None)
+            try:
+                from app.services.matchmaking import matchmaking_service
+                await matchmaking_service.cleanup_after_match(
+                    session.player1.uid,
+                    session.player2.uid,
+                    is_training=session.is_training,
+                )
+            except Exception as e:
+                logger.warning("Could not clear matchmaking state for %s: %s", match_id, e)
+            self._cleanup_session(match_id)
+            logger.info("Discarded unfinished match %s (%s) without scoring", match_id, reason)
     
     async def create_session(
         self,
@@ -215,7 +254,8 @@ class GameService:
         is_bot_match: bool = False,
         is_training: bool = False,
         is_friends_mode: bool = False,
-        player1_avg_wpm: float = 0
+        player1_avg_wpm: float = 0,
+        player1_avg_accuracy: float = 0,
     ) -> GameSession:
         """Create a new game session (thread-safe with asyncio lock)"""
         async with self._session_lock:
@@ -238,15 +278,20 @@ class GameService:
             if is_bot_match:
                 # Fetch player's avg WPM from database if not provided
                 avg_wpm = player1_avg_wpm
-                if avg_wpm == 0:
+                avg_accuracy = player1_avg_accuracy
+                if avg_wpm == 0 or avg_accuracy == 0:
                     try:
                         from app.database import Database
                         db = Database.get_db()
-                        user = await db.users.find_one({"firebase_uid": player1_uid})
+                        user = await db.users.find_one(
+                            {"firebase_uid": player1_uid},
+                            {"avg_wpm": 1, "avg_accuracy": 1},
+                        )
                         if user:
-                            avg_wpm = user.get("avg_wpm", 0)
+                            avg_wpm = avg_wpm or user.get("avg_wpm", 0)
+                            avg_accuracy = avg_accuracy or user.get("avg_accuracy", 0)
                     except Exception as e:
-                        logger.warning(f"Failed to fetch player avg WPM: {e}")
+                        logger.warning(f"Failed to fetch player typing averages: {e}")
                 
                 bot_name = "Bot"
                 player2 = PlayerState(
@@ -257,7 +302,7 @@ class GameService:
                     rank=get_rank_from_elo(player1_elo),
                     is_bot=True
                 )
-                bot = create_bot_for_player(player1_elo, words, avg_wpm)
+                bot = create_bot_for_player(player1_elo, words, avg_wpm, avg_accuracy)
             else:
                 player2 = PlayerState(
                     uid=player2_uid or "",
@@ -415,12 +460,12 @@ class GameService:
                 # Start Bot (if applicable)
                 if session.bot and not session._bot_started:
                     session._bot_started = True
-                    asyncio.create_task(self._run_bot(session))
+                    self._spawn_match_task(match_id, self._run_bot(session))
                 
                 # Start Timer
                 if not session._timer_started:
                     session._timer_started = True
-                    asyncio.create_task(self._game_timer(session))
+                    self._spawn_match_task(match_id, self._game_timer(session))
                 
                 # Broadcast public start
                 try:
@@ -438,7 +483,7 @@ class GameService:
                     logger.warning(f"Failed to broadcast match started: {e}")
 
             # Launch the scheduler
-            asyncio.create_task(scheduled_start())
+            self._spawn_match_task(match_id, scheduled_start())
             
         finally:
             self._starting_matches.discard(match_id)
@@ -557,7 +602,7 @@ class GameService:
         if session.bot and not session._bot_started and session.state == MatchState.ACTIVE:
             session._bot_started = True
             logger.info(f"Safety start for bot in match {match_id}")
-            asyncio.create_task(self._run_bot(session))
+            self._spawn_match_task(match_id, self._run_bot(session))
         
         # Get player state
         if session.player1.uid == player_uid:

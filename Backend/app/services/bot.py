@@ -46,7 +46,8 @@
 import asyncio
 import random
 import logging
-from typing import List, Callable, Awaitable, Optional
+from collections import deque
+from typing import Deque, List, Callable, Awaitable, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -86,16 +87,21 @@ class BotConfig:
     burst_probability: float = 0.3 # Chance to enter 'burst' mode on easy words
     
     @classmethod
-    def from_player_stats(cls, player_elo: int, player_avg_wpm: float = 0) -> 'BotConfig':
-        """Create bot config scaled to player skill level using their average WPM"""
+    def from_player_stats(
+        cls,
+        player_elo: int,
+        player_avg_wpm: float = 0,
+        player_avg_accuracy: float = 0,
+    ) -> 'BotConfig':
+        """Scale the bot against the player's measured speed and accuracy."""
         settings = get_settings()
         
-        # Use player's average WPM with +10/-5 variance for more challenge
+        accuracy_from_history = player_avg_accuracy > 0
+
         if player_avg_wpm > 0:
-            # Vary around the player's established speed at every rank.
-            wpm_variance = random.randint(-5, 5)
-                
-            base_wpm = max(10, int(player_avg_wpm + wpm_variance))
+            # Keep the target close to the measured average. A wide fixed
+            # +/-5 spread is disproportionately large for beginner players.
+            base_wpm = max(10, round(player_avg_wpm + random.uniform(-3, 3)))
             
             # Set accuracy based on their skill level (higher WPM = higher accuracy)
             if player_avg_wpm < 30:
@@ -136,6 +142,12 @@ class BotConfig:
                 accuracy = random.uniform(0.97, 0.99)
                 variance = 0.10
         
+        if accuracy_from_history:
+            # Accuracy is stored as a percentage. Small variation gives each
+            # bot a natural typing profile without making speed the only skill
+            # signal or turning one noisy match into a hard counter.
+            accuracy = max(0.82, min(0.99, player_avg_accuracy / 100 + random.uniform(-0.02, 0.015)))
+
         target_wpm = max(settings.bot_min_wpm, min(settings.bot_max_wpm, base_wpm))
         
         # Scaling AI Behavior based on WPM and ELO (User Request)
@@ -197,6 +209,7 @@ class BotAction:
     type: ActionType
     value: Optional[str] = None # Char for TYPE/PRESS
     duration: float = 0.0 # Duration for WAIT
+    speed_multiplier: float = 1.0
 
 
 class TypingBot:
@@ -215,7 +228,7 @@ class TypingBot:
         self.words_completed = 0
         
         self._running = False
-        self._action_queue: List[BotAction] = []
+        self._action_queue: Deque[BotAction] = deque()
         
         # Internal state
         self._current_speed_mult = 1.0 # Multiplier for current typing speed
@@ -237,11 +250,32 @@ class TypingBot:
         }
         
     def _calculate_base_delay(self) -> float:
-        """Calculate delay per keystroke in seconds based on target WPM"""
-        # WPM = (chars / 5) / minutes
-        # chars/sec = (WPM * 5) / 60 = WPM / 12
-        # delay = 1 / (chars/sec) = 12 / WPM
-        return 12.0 / (self.config.target_wpm * self._current_speed_mult)
+        """Calibrate simulated key delay to the advertised effective WPM.
+
+        A simple 12/WPM delay overshoots the match target once word pauses,
+        typo reactions, backspaces, and corrected characters are included.
+        Model those expected costs here so the bot's displayed WPM is close to
+        its configured skill instead of routinely landing at half speed.
+        """
+        target_seconds_per_character = 12.0 / max(1, self.config.target_wpm)
+        average_word_length = (
+            sum(len(word) for word in self.words) / len(self.words)
+            if self.words else 6.0
+        )
+        # _queue_next_word_actions adds a 50–150 ms pause plus 10% of the
+        # 60/WPM word interval; the space key also adds about 30 ms.
+        expected_word_pause = 0.1 + 6.0 / max(1, self.config.target_wpm) + 0.03
+        pause_per_character = expected_word_pause / max(1.0, average_word_length)
+        error_rate = max(0.0, min(1.0, 1.0 - self.config.accuracy))
+        reaction_and_backspace = 0.225 + 0.115
+        correction_multiplier = max(1.0, self.config.correction_speed)
+
+        base_delay = (
+            target_seconds_per_character
+            - pause_per_character
+            - error_rate * reaction_and_backspace
+        ) / (1.0 + 1.0 / max(1.0, average_word_length) + error_rate / correction_multiplier)
+        return max(0.02, base_delay / max(0.1, self._current_speed_mult))
 
     def _queue_next_word_actions(self):
         """Analyze next word and queue actions to type it"""
@@ -266,8 +300,6 @@ class TypingBot:
         else:
             self._current_speed_mult = 1.0
             
-        base_delay = self._calculate_base_delay()
-        
         # 2. Queue actions for each character
         for char in target_word:
             # Check for error
@@ -287,7 +319,7 @@ class TypingBot:
                 self._action_queue.append(BotAction(ActionType.BACKSPACE))
                 
                 # Action: Type correct char (often faster as they know it now)
-                self._action_queue.append(BotAction(ActionType.TYPE, char))
+                self._action_queue.append(BotAction(ActionType.TYPE, char, speed_multiplier=self.config.correction_speed))
                 
             else:
                 # Type correctly
@@ -310,7 +342,7 @@ class TypingBot:
     ) -> None:
         """Run the bot simulation"""
         self._running = True
-        self._action_queue = []
+        self._action_queue = deque()
         start_time = asyncio.get_event_loop().time()
         
         # Initial wait (simulate reaction/reading time)
@@ -332,7 +364,7 @@ class TypingBot:
             if not self._action_queue:
                 break
                 
-            action = self._action_queue.pop(0)
+            action = self._action_queue.popleft()
             
             # Execute Action
             if action.type == ActionType.WAIT:
@@ -342,7 +374,10 @@ class TypingBot:
                 # Calculate delay with variance
                 base_delay = self._calculate_base_delay()
                 variance = random.gauss(0, base_delay * self.config.variance)
-                actual_delay = max(0.02, base_delay + variance)
+                actual_delay = max(
+                    0.02,
+                    (base_delay + variance) / max(1.0, action.speed_multiplier),
+                )
                 
                 await asyncio.sleep(actual_delay)
                 
@@ -398,14 +433,20 @@ class TypingBot:
         self._running = False
 
 
-def create_bot_for_player(player_elo: int, words: List[str], player_avg_wpm: float = 0) -> TypingBot:
+def create_bot_for_player(
+    player_elo: int,
+    words: List[str],
+    player_avg_wpm: float = 0,
+    player_avg_accuracy: float = 0,
+) -> TypingBot:
     """Create a bot configured to match the player's skill level.
     
     Args:
         player_elo: Player's ELO rating
         words: List of words for the match
         player_avg_wpm: Player's average WPM (used for more accurate bot difficulty)
+        player_avg_accuracy: Player's average accuracy percentage
     """
-    config = BotConfig.from_player_stats(player_elo, player_avg_wpm)
+    config = BotConfig.from_player_stats(player_elo, player_avg_wpm, player_avg_accuracy)
     return TypingBot(config, words)
 

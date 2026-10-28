@@ -155,7 +155,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="relative mx-auto flex min-h-full w-full max-w-5xl flex-col justify-center px-5 py-10 md:py-16"
+      className="relative isolate mx-auto flex min-h-full w-full max-w-6xl flex-col justify-center overflow-hidden px-4 py-8 sm:px-6 md:py-10"
     >
       {/* Minimal edge color bleed - subtle gradient from edges */}
       <div className="fixed inset-0 pointer-events-none z-0">
@@ -169,6 +169,10 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
                 ? 'linear-gradient(to bottom, rgba(100, 100, 100, 0.05) 0%, transparent 100%)'
                 : 'linear-gradient(to bottom, rgba(239, 68, 68, 0.06) 0%, transparent 100%)'
           }}
+        />
+        <div
+          className="absolute left-1/2 top-24 h-72 w-72 -translate-x-1/2 rounded-full blur-[110px]"
+          style={{ background: isWin ? 'rgba(52, 211, 153, 0.08)' : isTie ? 'rgba(148, 163, 184, 0.05)' : 'rgba(251, 113, 133, 0.08)' }}
         />
         {/* Left edge accent */}
         <div
@@ -186,15 +190,16 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
       {/* Result Header - Minimal Clean Design - No Glows */}
       <motion.div
         variants={itemVariants}
-        className="relative z-10 mb-10 text-center md:mb-12"
+        className="relative z-10 mb-7 text-center md:mb-9"
       >
         {/* Small status text */}
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.1 }}
-          className="mb-4 font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-white/45"
+          className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-white/55"
         >
+          <span className={`h-1.5 w-1.5 rounded-full ${isWin ? 'bg-emerald-400' : isTie ? 'bg-slate-400' : 'bg-rose-400'}`} />
           {isTraining ? 'Training Complete' : 'Match Complete'}
         </motion.p>
 
@@ -203,8 +208,8 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.2 }}
-          className="text-5xl font-semibold tracking-[-0.05em] md:text-7xl"
-          style={{ color: isWin ? '#4ade80' : isTie ? '#9ca3af' : '#f87171' }}
+          className="bg-clip-text text-5xl font-bold tracking-[-0.055em] text-transparent md:text-7xl"
+          style={{ backgroundImage: isWin ? 'linear-gradient(100deg, #6ee7b7, #34d399 55%, #a7f3d0)' : isTie ? 'linear-gradient(100deg, #cbd5e1, #94a3b8)' : 'linear-gradient(100deg, #fda4af, #fb7185 55%, #fecdd3)' }}
         >
           {isWin ? 'Victory.' : isTie ? 'A close draw.' : 'Match complete.'}
         </motion.h2>
@@ -283,13 +288,13 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
       {/* Main Stats Card - Minimal Transparent */}
       <motion.div
         variants={itemVariants}
-        className="w-full relative z-10 max-w-4xl mx-auto"
+        className="relative z-10 mx-auto w-full max-w-4xl rounded-3xl border border-white/[0.09] bg-[#0a0b0f]/75 p-2 shadow-[0_24px_90px_rgba(0,0,0,0.35)] backdrop-blur-md sm:p-4"
       >
         {/* Main card - No background, just clean layout */}
         <div className="relative">
 
           {/* Desktop Layout: Clean Table-like Structure */}
-          <div className="hidden md:block relative z-10 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.025] to-transparent p-6 md:p-8">
+          <div className="relative z-10 hidden rounded-2xl p-4 md:block md:p-6">
             {/* Players Header Row */}
             <div className="flex items-end justify-between mb-8 px-4">
               {/* Player (Left) */}
@@ -403,7 +408,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
                         {p1Leads && <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-300/80">Stat edge</span>}
                       </div>
                     </div>
-                    <div className="w-32 text-center text-xs font-medium uppercase tracking-widest text-white/50">
+                    <div className="w-32 text-center text-xs font-semibold uppercase tracking-[0.16em] text-white/55">
                       {row.label}
                     </div>
                     <div className="flex-1 text-right">
@@ -459,7 +464,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
           {/* Trouble Keys - Minimal */}
           {keyStats && Object.keys(keyStats).some(k => keyStats[k].errors > 0) && (
             <div className="mt-8 flex flex-col items-center gap-3">
-              <span className="text-[10px] font-medium uppercase tracking-widest text-white/45">Opportunities for Improvement</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">Opportunities for Improvement</span>
               <div className="flex gap-2">
                 {Object.entries(keyStats)
                   .filter(([_, stats]) => stats.errors > 0)
@@ -479,14 +484,14 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
       {/* Action Buttons - Minimal Outlines */}
       <motion.div
         variants={itemVariants}
-        className="flex justify-center items-center gap-4 mt-16 pb-8"
+        className="relative z-10 mt-8 flex items-center justify-center gap-3 pb-4 sm:mt-9 sm:gap-4"
       >
         <button
           onClick={() => {
             useGameStore.getState().reset()
             navigate('/dashboard')
           }}
-          className="px-6 py-2 rounded text-xs font-medium uppercase tracking-widest text-white/55 hover:text-white transition-colors hover:bg-white/5"
+          className="rounded-lg px-5 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-white/55 transition-colors hover:bg-white/5 hover:text-white"
         >
           Dashboard
         </button>
@@ -507,7 +512,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
               navigate('/dashboard');
             }, 500);
           }}
-          className="px-8 py-3 rounded border border-white/10 hover:border-emerald-500/50 hover:bg-emerald-500/5 text-sm font-medium uppercase tracking-widest text-emerald-400 transition-all flex items-center gap-2"
+          className="flex items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.07] px-6 py-3 text-sm font-semibold uppercase tracking-[0.15em] text-emerald-300 shadow-[0_8px_30px_rgba(16,185,129,0.08)] transition-all hover:border-emerald-300/50 hover:bg-emerald-400/[0.12]"
         >
           {isTraining ? 'Train Again' : 'Play Again'}
           <span className="text-[10px] opacity-40 border border-current px-1 rounded">R</span>

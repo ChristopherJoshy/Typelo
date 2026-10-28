@@ -74,8 +74,10 @@ class Settings(BaseSettings):
     
     @property
     def cors_origins_list(self) -> List[str]:
-        """Parse CORS origins from comma-separated string"""
-        return [origin.strip() for origin in self.cors_origins.split(",")]
+        """Parse configured origins and include the production frontend hosts."""
+        configured = [origin.strip().rstrip("/") for origin in self.cors_origins.split(",") if origin.strip()]
+        production = ["https://typelo.tech", "https://www.typelo.tech"]
+        return list(dict.fromkeys([*configured, *production]))
     
     @property
     def firebase_credentials(self) -> dict:

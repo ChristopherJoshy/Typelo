@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from app.services.anticheat import AntiCheatService, Keystroke
-from app.services.bot import BotConfig
+from app.services.bot import BotConfig, TypingBot
 from app.constants import GACHA_WEIGHTS, LUCK_BOOST_WEIGHTS, PROFILE_GACHA_WEIGHTS, PROFILE_LUCK_BOOST_WEIGHTS
 
 
@@ -27,10 +27,24 @@ class GameBalanceTests(unittest.TestCase):
         self.assertEqual(wpm, 0.4)
 
     def test_high_rank_bots_are_near_players_speed(self):
-        with patch('app.services.bot.random.randint', return_value=0):
+        with patch('app.services.bot.random.uniform', side_effect=lambda low, high: (low + high) / 2):
             bot = BotConfig.from_player_stats(4000, 80)
         self.assertEqual(bot.target_wpm, 80)
         self.assertLessEqual(bot.correction_speed, 2)
+
+    def test_bot_delay_accounts_for_spaces_pauses_and_corrections(self):
+        config = BotConfig(target_wpm=80, accuracy=0.95, variance=0, correction_speed=1.4)
+        bot = TypingBot(config, ['short', 'typography', 'steady'] * 10)
+        average_word_length = sum(map(len, bot.words)) / len(bot.words)
+        error_rate = 1 - config.accuracy
+        expected_pause = 0.1 + 6 / config.target_wpm + 0.03
+        expected_seconds_per_char = (
+            bot._calculate_base_delay() * (1 + 1 / average_word_length + error_rate / config.correction_speed)
+            + error_rate * 0.34
+            + expected_pause / average_word_length
+        )
+        simulated_wpm = 12 / expected_seconds_per_char
+        self.assertAlmostEqual(simulated_wpm, config.target_wpm, delta=0.1)
 
     def test_result_score_has_same_order_as_displayed_net_wpm(self):
         service = AntiCheatService()

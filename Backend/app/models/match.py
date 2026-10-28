@@ -191,9 +191,6 @@ class MatchFoundMessage(ServerMessage):
     opponent_is_bot: bool
     words: List[str]
     game_mode: str = "ranked"  # 'ranked' or 'training'
-    opponent_is_bot: bool
-    words: List[str]
-    game_mode: str = "ranked"
     opponent_cursor: str = "default"
     opponent_effect: Optional[str] = None
 
@@ -210,6 +207,8 @@ class OpponentProgressMessage(ServerMessage):
     type: Literal["OPPONENT_PROGRESS"] = "OPPONENT_PROGRESS"
     char_index: int
     word_index: int
+    match_id: Optional[str] = None
+    sequence: Optional[int] = None
 
 
 class GameEndMessage(ServerMessage):
