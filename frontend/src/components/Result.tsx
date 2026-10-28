@@ -289,13 +289,13 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
         <div className="relative">
 
           {/* Desktop Layout: Clean Table-like Structure */}
-          <div className="hidden md:block relative z-10">
+          <div className="hidden md:block relative z-10 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.025] to-transparent p-6 md:p-8">
             {/* Players Header Row */}
             <div className="flex items-end justify-between mb-8 px-4">
               {/* Player (Left) */}
               <div className="flex flex-col items-start gap-3">
                 <div className="relative">
-                  <div className={`w-20 h-20 rounded-full border ${isWin ? 'border-emerald-500/50' : 'border-white/10'} p-1`}>
+                  <div className={`w-20 h-20 rounded-full border ${isWin ? 'border-emerald-400/80 shadow-[0_0_24px_rgba(52,211,153,0.12)]' : 'border-white/15'} p-1`}>
                     {user?.photoURL ? (
                       <img src={user.photoURL} alt="You" className="w-full h-full rounded-full object-cover" crossOrigin="anonymous" referrerPolicy="no-referrer" />
                     ) : (
@@ -316,20 +316,21 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
                     <p className="text-xs text-white/40 uppercase tracking-wider">{rankAfter}</p>
                     <span className="text-xs font-mono text-white/60">{displayedElo}</span>
                   </div>
+                  {isWin && <span className="mt-1 inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-emerald-300">Winner</span>}
                 </div>
               </div>
 
               {/* VS Divider */}
               <div className="flex flex-col items-center pb-4">
-                <div className="h-12 w-px bg-gradient-to-b from-white/0 via-white/10 to-white/0 mb-2"></div>
-                <span className="text-xs font-light text-white/20 tracking-[0.2em] uppercase">VS</span>
-                <div className="h-12 w-px bg-gradient-to-b from-white/0 via-white/10 to-white/0 mt-2"></div>
+                <div className="mb-2 h-12 w-px bg-gradient-to-b from-white/0 via-white/20 to-white/0"></div>
+                <span className="text-xs font-light uppercase tracking-[0.2em] text-white/40">VS</span>
+                <div className="mt-2 h-12 w-px bg-gradient-to-b from-white/0 via-white/20 to-white/0"></div>
               </div>
 
               {/* Opponent (Right) */}
               <div className="flex flex-col items-end gap-3 text-right">
                 <div className="relative">
-                  <div className={`w-20 h-20 rounded-full border ${!isWin && !isTie ? 'border-emerald-500/50' : 'border-white/10'} p-1`}>
+                  <div className={`w-20 h-20 rounded-full border ${!isWin && !isTie ? 'border-emerald-400/80 shadow-[0_0_24px_rgba(52,211,153,0.12)]' : 'border-white/15'} p-1`}>
                     {result.opponentPhotoURL && !result.opponentIsBot ? (
                       <img src={result.opponentPhotoURL} alt={result.opponentDisplayName} className="w-full h-full rounded-full object-cover" crossOrigin="anonymous" referrerPolicy="no-referrer" />
                     ) : (
@@ -361,34 +362,59 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
                     <span className="text-xs font-mono text-white/60">{result.opponentElo ?? (result.opponentIsBot ? 1000 : '???')}</span>
                     <p className="text-xs text-white/40 uppercase tracking-wider">{result.opponentRank}</p>
                   </div>
+                  {!isWin && !isTie && <span className="mt-1 inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-emerald-300">Winner</span>}
                 </div>
               </div>
             </div>
 
             {/* Stats Grid - Minimal Lines */}
-            <div className="border-t border-white/5 border-b border-white/5 divide-y divide-white/5">
+            <div className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
               {/* Rows */}
               {[
-                { label: 'Net WPM', p1: result.yourWpm, p2: result.opponentWpm },
-                { label: 'Accuracy', p1: Math.round(result.yourAccuracy) + '%', p2: Math.round(result.opponentAccuracy) + '%' },
-                { label: 'Score', p1: Math.round(result.yourScore), p2: Math.round(result.opponentScore) }
-              ].map((row, i) => (
-                <div key={i} className="flex items-center py-4 px-4 hover:bg-white/[0.01] transition-colors">
-                  <div className="flex-1 text-left">
-                    <span className={`text-2xl font-mono font-light ${parseInt(row.p1.toString()) >= parseInt(row.p2.toString()) ? 'text-white' : 'text-white/30'}`}>
-                      {row.p1}
-                    </span>
+                {
+                  label: 'Net WPM',
+                  p1: Number(result.yourWpm.toFixed(1)).toString(),
+                  p2: Number(result.opponentWpm.toFixed(1)).toString(),
+                  p1Value: result.yourWpm,
+                  p2Value: result.opponentWpm
+                },
+                {
+                  label: 'Accuracy',
+                  p1: Math.round(result.yourAccuracy) + '%',
+                  p2: Math.round(result.opponentAccuracy) + '%',
+                  p1Value: result.yourAccuracy,
+                  p2Value: result.opponentAccuracy
+                },
+                {
+                  label: 'Score',
+                  p1: Math.round(result.yourScore),
+                  p2: Math.round(result.opponentScore),
+                  p1Value: result.yourScore,
+                  p2Value: result.opponentScore
+                }
+              ].map((row) => {
+                const p1Leads = row.p1Value > row.p2Value
+                const p2Leads = row.p2Value > row.p1Value
+                return (
+                  <div key={row.label} className="flex items-center px-4 py-4 transition-colors hover:bg-white/[0.02]">
+                    <div className="flex-1 text-left">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-2xl font-mono font-medium tabular-nums ${p1Leads ? 'text-emerald-300' : 'text-white/75'}`}>{row.p1}</span>
+                        {p1Leads && <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-300/80">Stat edge</span>}
+                      </div>
+                    </div>
+                    <div className="w-32 text-center text-xs font-medium uppercase tracking-widest text-white/50">
+                      {row.label}
+                    </div>
+                    <div className="flex-1 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {p2Leads && <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-300/80">Stat edge</span>}
+                        <span className={`text-2xl font-mono font-medium tabular-nums ${p2Leads ? 'text-emerald-300' : 'text-white/75'}`}>{row.p2}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="w-32 text-center text-xs uppercase tracking-widest text-white/20 font-medium">
-                    {row.label}
-                  </div>
-                  <div className="flex-1 text-right">
-                    <span className={`text-2xl font-mono font-light ${parseInt(row.p2.toString()) > parseInt(row.p1.toString()) ? 'text-white' : 'text-white/30'}`}>
-                      {row.p2}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
 
@@ -433,14 +459,14 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
           {/* Trouble Keys - Minimal */}
           {keyStats && Object.keys(keyStats).some(k => keyStats[k].errors > 0) && (
             <div className="mt-8 flex flex-col items-center gap-3">
-              <span className="text-[10px] text-white/20 uppercase tracking-widest">Opportunities for Improvement</span>
+              <span className="text-[10px] font-medium uppercase tracking-widest text-white/45">Opportunities for Improvement</span>
               <div className="flex gap-2">
                 {Object.entries(keyStats)
                   .filter(([_, stats]) => stats.errors > 0)
                   .sort((a, b) => b[1].errors - a[1].errors)
                   .slice(0, 4)
                   .map(([key]) => (
-                    <span key={key} className="w-8 h-8 rounded border border-white/5 flex items-center justify-center text-sm font-mono text-white/50">
+                    <span key={key} className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-white/[0.02] font-mono text-sm text-white/70">
                       {key.toUpperCase()}
                     </span>
                   ))}
@@ -460,7 +486,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
             useGameStore.getState().reset()
             navigate('/dashboard')
           }}
-          className="px-6 py-2 rounded text-xs font-medium uppercase tracking-widest text-white/30 hover:text-white transition-colors hover:bg-white/5"
+          className="px-6 py-2 rounded text-xs font-medium uppercase tracking-widest text-white/55 hover:text-white transition-colors hover:bg-white/5"
         >
           Dashboard
         </button>
@@ -492,13 +518,21 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
 }
 
 function MobileStatsRow({ label, p1, p2 }: { label: string, p1: string | number, p2: string | number }) {
-  const v1 = parseInt(p1.toString());
-  const v2 = parseInt(p2.toString());
+  const v1 = Number.parseFloat(p1.toString())
+  const v2 = Number.parseFloat(p2.toString())
+  const p1Leads = v1 > v2
+  const p2Leads = v2 > v1
   return (
-    <div className="flex items-center justify-between p-3 rounded bg-white/[0.02] border border-white/5">
-      <span className={`font-mono font-bold ${v1 >= v2 ? 'text-white' : 'text-white/30'}`}>{p1}</span>
-      <span className="text-[10px] uppercase tracking-widest text-white/20">{label}</span>
-      <span className={`font-mono font-bold ${v2 > v1 ? 'text-white' : 'text-white/30'}`}>{p2}</span>
+    <div className="flex items-center justify-between rounded-lg border border-white/[0.08] bg-white/[0.025] p-3">
+      <div className="flex items-center gap-1.5">
+        <span className={`font-mono font-bold tabular-nums ${p1Leads ? 'text-emerald-300' : 'text-white/75'}`}>{p1}</span>
+        {p1Leads && <span className="text-[8px] font-bold uppercase tracking-wider text-emerald-300/80">Edge</span>}
+      </div>
+      <span className="text-[10px] font-medium uppercase tracking-widest text-white/50">{label}</span>
+      <div className="flex items-center gap-1.5">
+        {p2Leads && <span className="text-[8px] font-bold uppercase tracking-wider text-emerald-300/80">Edge</span>}
+        <span className={`font-mono font-bold tabular-nums ${p2Leads ? 'text-emerald-300' : 'text-white/75'}`}>{p2}</span>
+      </div>
     </div>
   )
 }

@@ -1029,7 +1029,17 @@ class GameService:
             logger.warning(f"Failed to broadcast match ended: {e}")
         
         # Save match and update user stats in MongoDB
-        await self._save_match_to_db(session, player1_change, player2_change, p1_result, p2_result)
+        # Coins were already applied above so their exact awarded amounts can
+        # be included in the result payload. Keep persistence from paying them
+        # a second time; forfeit persistence still awards its own base reward.
+        await self._save_match_to_db(
+            session,
+            player1_change,
+            player2_change,
+            p1_result,
+            p2_result,
+            award_coins=False,
+        )
         
         # Clean up matchmaking state (allow players to queue again)
         try:
@@ -1051,9 +1061,11 @@ class GameService:
         player1_elo_change: int,
         player2_elo_change: int,
         p1_result: str,
-        p2_result: str
+        p2_result: str,
+        *,
+        award_coins: bool = True,
     ) -> None:
-        """Save match results to MongoDB and update user stats"""
+        """Save match results, optionally awarding coins for forfeit matches."""
         try:
             from app.database import Database
             db = Database.get_db()
@@ -1093,45 +1105,41 @@ class GameService:
             await db.matches.insert_one(match_doc)
             logger.info(f"Match saved: {session.match_id} (training={session.is_training}, friends={session.is_friends_mode})")
             
-            # Award coins for all completed matches (including training and friends)
-            from app.constants import WIN_COIN_REWARD, LOSS_COIN_REWARD
-            
-            # Check leaderboard position for coin bonuses (50% top 3, 20% top 4-10)
-            p1_bonus_rate = await get_leaderboard_coin_bonus(session.player1.uid)
-            p2_bonus_rate = await get_leaderboard_coin_bonus(session.player2.uid) if not session.player2.is_bot else 0.0
-            
-            # Match Rank Bonus Helper
-            from app.models.user import Rank, get_rank_from_elo
-            def get_rank_bonus_rate(rank: Rank) -> float:
-                if rank == Rank.BRONZE: return 0.20
-                if rank == Rank.GOLD: return 0.40
-                if rank == Rank.PLATINUM: return 0.80
-                if rank == Rank.RANKER: return 1.60
-                return 0.0
+            if award_coins:
+                # Forfeit matches use the persistence path to award their base
+                # reward. Normal completed matches already award coins in
+                # end_game so the exact total can be sent to the result screen.
+                from app.constants import WIN_COIN_REWARD, LOSS_COIN_REWARD
 
-            p1_rank_bonus = get_rank_bonus_rate(session.player1.rank)
-            
-            # Award player 1 coins
-            p1_base_coins = WIN_COIN_REWARD if p1_result == "win" else LOSS_COIN_REWARD
-            p1_coins = int(p1_base_coins * (1 + p1_bonus_rate + p1_rank_bonus))
-            await db.users.update_one(
-                {"firebase_uid": session.player1.uid},
-                {"$inc": {"coins": p1_coins}}
-            )
-            p1_bonus_log = f' (LB: {int(p1_bonus_rate*100)}% Rank: {int(p1_rank_bonus*100)}%)' if (p1_bonus_rate > 0 or p1_rank_bonus > 0) else ''
-            logger.info(f"Player 1 ({session.player1.uid}) awarded {p1_coins} coins{p1_bonus_log}")
-            
-            # Award player 2 coins if not a bot (with position-based bonus)
-            if not session.player2.is_bot:
-                p2_rank_bonus = get_rank_bonus_rate(session.player2.rank)
-                p2_base_coins = WIN_COIN_REWARD if p2_result == "win" else LOSS_COIN_REWARD
-                p2_coins = int(p2_base_coins * (1 + p2_bonus_rate + p2_rank_bonus))
+                p1_bonus_rate = await get_leaderboard_coin_bonus(session.player1.uid)
+                p2_bonus_rate = await get_leaderboard_coin_bonus(session.player2.uid) if not session.player2.is_bot else 0.0
+
+                from app.models.user import Rank
+                def get_rank_bonus_rate(rank: Rank) -> float:
+                    if rank == Rank.BRONZE: return 0.20
+                    if rank == Rank.GOLD: return 0.40
+                    if rank == Rank.PLATINUM: return 0.80
+                    if rank == Rank.RANKER: return 1.60
+                    return 0.0
+
+                p1_rank_bonus = get_rank_bonus_rate(session.player1.rank)
+                p1_base_coins = WIN_COIN_REWARD if p1_result == "win" else LOSS_COIN_REWARD
+                p1_coins = int(p1_base_coins * (1 + p1_bonus_rate + p1_rank_bonus))
                 await db.users.update_one(
-                    {"firebase_uid": session.player2.uid},
-                    {"$inc": {"coins": p2_coins}}
+                    {"firebase_uid": session.player1.uid},
+                    {"$inc": {"coins": p1_coins}}
                 )
-                p2_bonus_log = f' (LB: {int(p2_bonus_rate*100)}% Rank: {int(p2_rank_bonus*100)}%)' if (p2_bonus_rate > 0 or p2_rank_bonus > 0) else ''
-                logger.info(f"Player 2 ({session.player2.uid}) awarded {p2_coins} coins{p2_bonus_log}")
+                logger.info(f"Player 1 ({session.player1.uid}) awarded {p1_coins} forfeit coins")
+
+                if not session.player2.is_bot:
+                    p2_rank_bonus = get_rank_bonus_rate(session.player2.rank)
+                    p2_base_coins = WIN_COIN_REWARD if p2_result == "win" else LOSS_COIN_REWARD
+                    p2_coins = int(p2_base_coins * (1 + p2_bonus_rate + p2_rank_bonus))
+                    await db.users.update_one(
+                        {"firebase_uid": session.player2.uid},
+                        {"$inc": {"coins": p2_coins}}
+                    )
+                    logger.info(f"Player 2 ({session.player2.uid}) awarded {p2_coins} forfeit coins")
             
             # Skip user stats update for training and friends mode matches
             if session.is_training or session.is_friends_mode:
