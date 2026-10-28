@@ -74,6 +74,8 @@ export default function Game() {
     matchInfo,
     result,
     timeRemaining,
+    matchDuration,
+    startTime,
     wpm,
     accuracy,
     opponentCharIndex,
@@ -84,6 +86,7 @@ export default function Game() {
   } = useGameStore()
 
   const { inputRef, handleKeyDown, handleMobileInput, currentWord } = useTyping({
+    timeOffset,
     onKeystroke: (char, charIndex, correct) => {
       // Calculate intensity based on position relative to opponent
       // 0 = calm (ahead), 1 = intense (behind)
@@ -116,8 +119,8 @@ export default function Game() {
   // Synchronized Start Logic
   useEffect(() => {
     // Only run if we have a start time and are in waiting state
-    if (status === 'waiting' && useGameStore.getState().startTime) {
-      const startTime = useGameStore.getState().startTime!
+    if (status === 'waiting' && startTime) {
+      let animationHandle: number
 
       const updateCountdown = () => {
         const now = Date.now() + timeOffset
@@ -134,34 +137,27 @@ export default function Game() {
         const seconds = Math.ceil(diff / 1000)
         setAutoStartCountdown(seconds)
 
-        requestAnimationFrame(updateCountdown)
+        animationHandle = requestAnimationFrame(updateCountdown)
       }
 
-      const animationHandle = requestAnimationFrame(updateCountdown)
+      animationHandle = requestAnimationFrame(updateCountdown)
       return () => cancelAnimationFrame(animationHandle)
-    } else if (status === 'waiting' && !useGameStore.getState().startTime) {
+    } else if (status === 'waiting' && !startTime) {
       // Fallback for legacy/local starts (if any)
       // This handles the case where matchInfo is set but GAME_START hasn't arrived with a timestamp yet
       // We just wait or show a generic "Get Ready"
       setAutoStartCountdown(null)
     }
-  }, [status, useGameStore.getState().startTime])
+  }, [status, startTime, timeOffset])
 
   // Game timer - starts when status becomes 'playing'
   useEffect(() => {
     if (status !== 'playing') return
 
-    // Safeguard: Check and initialize timer if not set properly
-    const initialTime = useGameStore.getState().timeRemaining
-    if (typeof initialTime !== 'number' || initialTime <= 0) {
-      useGameStore.setState({ timeRemaining: DEFAULT_GAME_DURATION_SECONDS })
-    }
-
     // Capture start time relative to server time to ensure synchronization
     // If startTime is available (from GAME_START), use it. Otherwise fall back to current synced time.
-    const startTime = useGameStore.getState().startTime
     const gamePhaseStartTime = startTime || (Date.now() + timeOffset)
-    const duration = useGameStore.getState().timeRemaining || DEFAULT_GAME_DURATION_SECONDS
+    const duration = matchDuration || DEFAULT_GAME_DURATION_SECONDS
 
     const interval = setInterval(() => {
       const now = Date.now() + timeOffset
@@ -178,7 +174,7 @@ export default function Game() {
     }, 100) // Update frequently for smoothness, but logic relies on delta
 
     return () => clearInterval(interval)
-  }, [status, timeOffset])  // Refreshes when status changes to playing
+  }, [status, timeOffset, startTime, matchDuration])
 
   // Safety timeout: if game is stuck at 0 seconds without GAME_END, reset after 5 seconds
   useEffect(() => {
@@ -219,21 +215,21 @@ export default function Game() {
           >
             {/* Overlay for Waiting State - DRAMATIC VS SCREEN */}
             {status === 'waiting' && (
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black overflow-hidden">
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center overflow-hidden bg-[#08090d]">
 
                 {/* Animated background effects - Minimal and Clean */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
                   {/* Subtle ambient glow */}
                   <motion.div
-                    className="absolute inset-0 bg-gradient-radial from-rose-500/5 via-transparent to-transparent"
+                    className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_45%,rgba(244,63,94,0.15),transparent_40%),radial-gradient(ellipse_at_80%_45%,rgba(139,92,246,0.15),transparent_40%)]"
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.2 }}
+                    animate={{ opacity: 1 }}
                     transition={{ duration: 2 }}
                   />
                 </div>
 
                 {/* Main VS Content */}
-                <div className="relative z-10 w-full max-w-6xl px-4 flex flex-col items-center">
+                <div className="relative z-10 flex w-full max-w-3xl flex-col items-center px-6">
 
                   {/* Mode Badge */}
                   <motion.div
@@ -242,7 +238,7 @@ export default function Game() {
                     transition={{ delay: 0.3, duration: 0.5 }}
 
                   >
-                    <span className={`text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] md:tracking-[0.3em] ${matchInfo?.gameMode === 'training' ? 'text-emerald-400'
+                    <span className={`inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] md:text-xs ${matchInfo?.gameMode === 'training' ? 'text-emerald-400'
                       : matchInfo?.gameMode === 'friends' ? 'text-purple-400'
                         : 'text-rose-400'
                       }`}>
@@ -251,7 +247,7 @@ export default function Game() {
                   </motion.div>
 
                   {/* Players Container - Horizontal on mobile */}
-                  <div className="flex flex-row items-center justify-center gap-4 md:gap-0 w-full">
+                  <div className="mt-10 flex w-full flex-row items-center justify-center gap-4 md:mt-14 md:gap-0">
 
                     {/* Player 1 (You) */}
                     <motion.div
@@ -386,7 +382,7 @@ export default function Game() {
                   </div>
 
                   {/* Countdown Section - Minimal */}
-                  <div className="mt-12 md:mt-24 h-24 md:h-32 flex flex-col items-center justify-center">
+                  <div aria-live="polite" className="mt-12 flex h-24 flex-col items-center justify-center md:mt-16 md:h-32">
                     <AnimatePresence mode="wait">
                       {autoStartCountdown !== null && autoStartCountdown > 0 ? (
                         <motion.div
@@ -397,7 +393,7 @@ export default function Game() {
                           transition={{ duration: 0.2 }}
                           className="relative"
                         >
-                          <span className="block text-6xl md:text-8xl font-light text-white tracking-tighter">
+                          <span className="block font-mono text-6xl font-semibold tracking-tighter text-white md:text-8xl">
                             {autoStartCountdown}
                           </span>
                         </motion.div>
@@ -418,14 +414,14 @@ export default function Game() {
                             ))}
                           </div>
                           <span className="text-xs uppercase tracking-[0.2em] text-white/30">
-                            Waiting
+                            Preparing match
                           </span>
                         </motion.div>
                       ) : (
                         <motion.div
                           initial={{ scale: 0.9, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
-                          className="text-4xl md:text-6xl font-light text-emerald-400 tracking-widest"
+                          className="text-4xl font-semibold tracking-tight text-emerald-300 md:text-6xl"
                         >
                           GO
                         </motion.div>
@@ -438,10 +434,20 @@ export default function Game() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 1.5 }}
-                    className="mt-8 text-xs text-white/20 uppercase tracking-widest"
+                    className="mt-5 text-xs uppercase tracking-[0.2em] text-white/40"
                   >
                     Get ready to type
                   </motion.p>
+                </div>
+              </div>
+            )}
+
+            {status === 'playing' && timeRemaining === 0 && (
+              <div role="status" aria-live="polite" className="absolute inset-0 z-40 flex items-center justify-center bg-[#08090d]/95 backdrop-blur-sm">
+                <div className="text-center">
+                  <p className="mb-3 font-mono text-xs uppercase tracking-[0.2em] text-rose-300">Time is up</p>
+                  <p className="text-3xl font-semibold tracking-tight text-white">Preparing your results</p>
+                  <p className="mt-3 text-sm text-white/50">The match is complete. Calculating the final score…</p>
                 </div>
               </div>
             )}

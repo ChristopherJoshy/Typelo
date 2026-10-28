@@ -155,7 +155,8 @@ export type ServerMessageType =
   | { type: 'PUBLIC_MATCH_STARTED'; match_id: string; player1_name: string; player1_photo?: string; player2_name: string; player2_photo?: string; is_bot_match: boolean; game_mode: string }
   | { type: 'PUBLIC_MATCH_ENDED'; match_id: string; winner_name: string; winner_photo?: string; loser_name: string; loser_photo?: string; winner_wpm: number; loser_wpm: number; is_tie: boolean; game_mode: string }
   | { type: 'ERROR'; code: string; message: string }
-  | { type: 'PONG'; server_time: number } // RTT measurement response
+  | { type: 'GAME_INPUT_ACK'; event_id: number; retry?: boolean }
+  | { type: 'PONG'; server_time: number; timestamp?: number } // RTT measurement and server clock synchronization
 
 // UI Helpers
 export const getRankColor = (rank: Rank): string => {

@@ -112,7 +112,7 @@ export async function checkBackendHealth(): Promise<boolean> {
   try {
     const response = await apiFetch(API_ENDPOINTS.health, {
       method: 'GET',
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10000),
     })
     return response.ok
   } catch {

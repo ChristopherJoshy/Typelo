@@ -62,6 +62,12 @@ interface WebSocketContextType {
   timeOffset: number // client time + offset = server time
 }
 
+type GameEventPayload = {
+  type: 'KEYSTROKE' | 'WORD_COMPLETE'
+  [key: string]: unknown
+}
+type QueuedGameEvent = GameEventPayload & { event_id: number }
+
 const WebSocketContext = createContext<WebSocketContextType | null>(null)
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
@@ -78,9 +84,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false)
   const [ping, setPing] = useState<number>(0) // Current ping in ms
   const pingTimestampRef = useRef<number>(0) // When we sent the last ping
+  const bestPingRef = useRef<number>(Infinity)
   const [timeOffset, setTimeOffset] = useState<number>(0) // Difference between server and client clock
+  const pendingGameEventsRef = useRef<QueuedGameEvent[]>([])
+  const gameEventFlushTimeoutRef = useRef<number | null>(null)
+  const flushPendingGameEventsRef = useRef<(socket: WebSocket) => void>(() => {})
 
   const { user, stats, idToken, refreshToken } = useAuthStore()
+  const gameEventOwnerRef = useRef<string | null>(user?.uid ?? null)
+  const nextGameEventIdRef = useRef(1)
+  const lastSentGameEventIdRef = useRef(0)
   const {
     matchFound,
     startGame,
@@ -138,8 +151,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         // the backend should have sent GAME_END with forfeit result.
         // If neither happens, reset to idle to prevent frozen UI.
         setTimeout(() => {
-          const currentStatus = useGameStore.getState().status
-          if (currentStatus === 'waiting') {
+          const currentGame = useGameStore.getState()
+          if (currentGame.status === 'waiting' && currentGame.matchInfo?.matchId === matchInfo.matchId && !currentGame.startTime) {
             console.warn('Waiting timeout: game never started, resetting to idle')
             useGameStore.getState().reset()
           }
@@ -166,34 +179,20 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           rawWordIndex = useGameStore.getState().opponentWordIndex
         }
 
-        // Auto-fix for relative indexing:
-        // If the backend sends relative char indices (0, 1, 2 for each word),
-        // we need to convert them to global timestamps for the renderer.
-        const currentWords = useGameStore.getState().words
-        let globalCharIndex = rawCharIndex
-
-        if (currentWords.length > 0 && typeof rawWordIndex === 'number' && rawWordIndex > 0 && rawWordIndex < currentWords.length + 1) {
-          // Calculate start index of the current word
-          // Sum of lengths of all previous words + 1 for each space
-          const wordStartOffset = currentWords
-            .slice(0, rawWordIndex)
-            .reduce((acc, w) => acc + w.length + 1, 0)
-
-          // If the received char index is LESS than the start of the word,
-          // it must be relative. (Global index cannot be less than word start).
-          // However, ensure we don't double-add if it's already fixed (sanity check)
-          if (rawCharIndex < wordStartOffset) {
-            globalCharIndex = wordStartOffset + rawCharIndex
-          }
-        }
-
         updateOpponentProgress(
-          globalCharIndex,
+          rawCharIndex,
           rawWordIndex
         )
         break
 
       case 'GAME_END':
+        pendingGameEventsRef.current = []
+        nextGameEventIdRef.current = 1
+        lastSentGameEventIdRef.current = 0
+        if (gameEventFlushTimeoutRef.current !== null) {
+          clearTimeout(gameEventFlushTimeoutRef.current)
+          gameEventFlushTimeoutRef.current = null
+        }
         // Backend sends snake_case, we need to map to camelCase
         const rawResult = message.result as any
         console.log('[DEBUG] Game End rawResult:', rawResult); // Debug log
@@ -257,6 +256,24 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }, 1000)
         break
 
+      case 'GAME_INPUT_ACK': {
+        const ack = message as any
+        const eventId = ack.event_id
+        if (!Number.isInteger(eventId) || eventId < 0) break
+        pendingGameEventsRef.current = pendingGameEventsRef.current.filter(event => event.event_id > eventId)
+        if (ack.retry === true) {
+          lastSentGameEventIdRef.current = eventId
+          const socket = wsRef.current
+          if (socket?.readyState === WebSocket.OPEN && gameEventFlushTimeoutRef.current === null) {
+            gameEventFlushTimeoutRef.current = window.setTimeout(() => {
+              gameEventFlushTimeoutRef.current = null
+              flushPendingGameEventsRef.current(socket)
+            }, 250)
+          }
+        }
+        break
+      }
+
 
       case 'ONLINE_COUNT':
         setCount(message.count)
@@ -311,19 +328,20 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       case 'PONG':
         // Calculate RTT from when we sent the ping
-        if (pingTimestampRef.current > 0) {
+        const pong = message as any
+        const sentAt = typeof pong.timestamp === 'number' ? pong.timestamp : pingTimestampRef.current
+        if (sentAt > 0) {
           const now = Date.now()
-          const rtt = now - pingTimestampRef.current
+          const rtt = now - sentAt
           setPing(rtt)
 
-          // Calculate time offset if server time is provided
-          // PONG message now includes 'server_time'
-          const serverTime = (message as any).server_time
-          if (serverTime) {
-            // Est. Server Time now = serverTime (sent time) + latency (RTT/2)
-            const latency = rtt / 2
-            const estimatedServerTime = serverTime + latency
-            const offset = estimatedServerTime - now
+          // Estimate clock offset from the midpoint of the request round trip.
+          // The server timestamp is captured when it handles the PING.
+          const serverTime = pong.server_time
+          if (serverTime && rtt >= 0 && rtt <= bestPingRef.current + 50) {
+            bestPingRef.current = Math.min(bestPingRef.current, rtt)
+            const clientMidpoint = sentAt + rtt / 2
+            const offset = serverTime - clientMidpoint
             setTimeOffset(offset)
           }
         }
@@ -334,6 +352,33 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   // Use ref for handleMessage to avoid reconnection on callback change
   const handleMessageRef = useRef(handleMessage)
   useEffect(() => { handleMessageRef.current = handleMessage }, [handleMessage])
+
+  // Drain buffered typing after a brief connection drop. Keep a burst below
+  // the server's per-second message limit and leave room for live input.
+  const flushPendingGameEvents = useCallback((socket: WebSocket) => {
+    if (gameEventFlushTimeoutRef.current !== null) {
+      clearTimeout(gameEventFlushTimeoutRef.current)
+      gameEventFlushTimeoutRef.current = null
+    }
+    if (socket.readyState !== WebSocket.OPEN) return
+
+    if (socket.bufferedAmount > 64 * 1024) {
+      gameEventFlushTimeoutRef.current = window.setTimeout(() => flushPendingGameEventsRef.current(socket), 100)
+      return
+    }
+
+    const unsent = pendingGameEventsRef.current.filter(event => event.event_id > lastSentGameEventIdRef.current)
+    const batch = unsent.slice(0, 30)
+    for (const event of batch) {
+      socket.send(JSON.stringify(event))
+      lastSentGameEventIdRef.current = event.event_id
+    }
+
+    if (unsent.length > batch.length) {
+      gameEventFlushTimeoutRef.current = window.setTimeout(() => flushPendingGameEventsRef.current(socket), 1000)
+    }
+  }, [])
+  flushPendingGameEventsRef.current = flushPendingGameEvents
 
   const connect = useCallback(async () => {
     const currentUser = userRef.current
@@ -381,6 +426,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       wsRef.current = ws
 
       ws.onopen = () => {
+        bestPingRef.current = Infinity
+        lastSentGameEventIdRef.current = 0
         isConnectingRef.current = false
         setIsConnected(true)
         reconnectAttemptRef.current = 0 // Reset backoff on successful connection
@@ -397,6 +444,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           pingTimestampRef.current = Date.now()
           wsRef.current.send(JSON.stringify({ type: 'PING', timestamp: pingTimestampRef.current }))
+          flushPendingGameEvents(ws)
         }
 
         heartbeatIntervalRef.current = window.setInterval(() => {
@@ -432,7 +480,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
         // Only reconnect if explicitly enabled and user is still authenticated
         if (shouldReconnectRef.current && userRef.current && idTokenRef.current) {
-          // Exponential backoff: 3s, 6s, 12s, 24s, 30s (max)
+          // Exponential backoff: 1s, 2s, 4s, 8s (max)
           const delay = Math.min(
             baseReconnectDelay * Math.pow(2, reconnectAttemptRef.current),
             maxReconnectDelay
@@ -453,7 +501,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       console.error('WebSocket connection failed', err)
       isConnectingRef.current = false
     }
-  }, [refreshToken]) // Only depends on refreshToken which is stable
+  }, [refreshToken, flushPendingGameEvents]) // Only depends on stable connection helpers
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false
@@ -474,7 +522,32 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const sendGameEvent = useCallback((data: GameEventPayload) => {
+    const event: QueuedGameEvent = { ...data, event_id: nextGameEventIdRef.current++ }
+    const socket = wsRef.current
+    if (pendingGameEventsRef.current.length > 0 || !socket || socket.readyState !== WebSocket.OPEN) {
+      // A 30-second match can produce fewer than 1,600 input events at the
+      // server's 50-message/second limit. This bound comfortably covers it.
+      if (pendingGameEventsRef.current.length < 2048) {
+        pendingGameEventsRef.current.push(event)
+      }
+      if (socket?.readyState === WebSocket.OPEN && gameEventFlushTimeoutRef.current === null) {
+        flushPendingGameEvents(socket)
+      }
+      return
+    }
+    pendingGameEventsRef.current.push(event)
+    flushPendingGameEvents(socket)
+  }, [flushPendingGameEvents])
+
   const joinQueue = useCallback(() => {
+    pendingGameEventsRef.current = []
+    nextGameEventIdRef.current = 1
+    lastSentGameEventIdRef.current = 0
+    if (gameEventFlushTimeoutRef.current !== null) {
+      clearTimeout(gameEventFlushTimeoutRef.current)
+      gameEventFlushTimeoutRef.current = null
+    }
     // First, clean up any stale queue state from previous matchmaking
     send({ type: 'LEAVE_QUEUE' })
     // Reset game store to clear any lingering state
@@ -490,6 +563,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [send])
 
   const joinTrainingQueue = useCallback(() => {
+    pendingGameEventsRef.current = []
+    nextGameEventIdRef.current = 1
+    lastSentGameEventIdRef.current = 0
+    if (gameEventFlushTimeoutRef.current !== null) {
+      clearTimeout(gameEventFlushTimeoutRef.current)
+      gameEventFlushTimeoutRef.current = null
+    }
     // First, clean up any stale queue state from previous matchmaking
     send({ type: 'LEAVE_QUEUE' })
     // Reset game store to clear any lingering state
@@ -505,6 +585,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [send])
 
   const joinFriendsQueue = useCallback(() => {
+    pendingGameEventsRef.current = []
+    nextGameEventIdRef.current = 1
+    lastSentGameEventIdRef.current = 0
+    if (gameEventFlushTimeoutRef.current !== null) {
+      clearTimeout(gameEventFlushTimeoutRef.current)
+      gameEventFlushTimeoutRef.current = null
+    }
     // First, clean up any stale queue state from previous matchmaking
     send({ type: 'LEAVE_QUEUE' })
     // Reset game store to clear any lingering state
@@ -520,6 +607,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [send])
 
   const leaveQueue = useCallback(() => {
+    pendingGameEventsRef.current = []
+    nextGameEventIdRef.current = 1
+    lastSentGameEventIdRef.current = 0
+    if (gameEventFlushTimeoutRef.current !== null) {
+      clearTimeout(gameEventFlushTimeoutRef.current)
+      gameEventFlushTimeoutRef.current = null
+    }
     send({ type: 'LEAVE_QUEUE' })
   }, [send])
 
@@ -536,28 +630,48 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     // Update tracker (backspace can go backwards)
     lastSentCharIndexRef.current = char === '\b' ? charIndex - 1 : charIndex
 
-    send({
+    sendGameEvent({
       type: 'KEYSTROKE',
       char,
-      timestamp: Date.now(),
+      timestamp: Date.now() + timeOffset,
       char_index: charIndex,
     })
-  }, [send])
+  }, [sendGameEvent, timeOffset])
 
   const sendWordComplete = useCallback((word: string, wordIndex: number) => {
-    send({
+    const words = useGameStore.getState().words
+    lastSentCharIndexRef.current = words.slice(0, wordIndex + 1).reduce((sum, item) => sum + item.length + 1, 0) - 1
+    sendGameEvent({
       type: 'WORD_COMPLETE',
       word,
       word_index: wordIndex,
-      timestamp: Date.now(),
+      timestamp: Date.now() + timeOffset,
     })
-  }, [send])
+  }, [sendGameEvent, timeOffset])
 
   // Automatically connect when authenticated - only depends on user and idToken presence
   useEffect(() => {
+    const currentUid = user?.uid ?? null
+    if (currentUid !== gameEventOwnerRef.current) {
+      pendingGameEventsRef.current = []
+      nextGameEventIdRef.current = 1
+      lastSentGameEventIdRef.current = 0
+      if (gameEventFlushTimeoutRef.current !== null) {
+        clearTimeout(gameEventFlushTimeoutRef.current)
+        gameEventFlushTimeoutRef.current = null
+      }
+      gameEventOwnerRef.current = currentUid
+    }
     if (user && idToken) {
       connect()
     } else {
+      pendingGameEventsRef.current = []
+      nextGameEventIdRef.current = 1
+      lastSentGameEventIdRef.current = 0
+      if (gameEventFlushTimeoutRef.current !== null) {
+        clearTimeout(gameEventFlushTimeoutRef.current)
+        gameEventFlushTimeoutRef.current = null
+      }
       disconnect()
     }
     return () => {

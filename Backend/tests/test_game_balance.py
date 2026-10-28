@@ -1,0 +1,48 @@
+import unittest
+from unittest.mock import patch
+
+from app.services.anticheat import AntiCheatService, Keystroke
+from app.services.bot import BotConfig
+from app.constants import GACHA_WEIGHTS, LUCK_BOOST_WEIGHTS, PROFILE_GACHA_WEIGHTS, PROFILE_LUCK_BOOST_WEIGHTS
+
+
+class GameBalanceTests(unittest.TestCase):
+    def test_retyping_same_character_does_not_inflate_speed(self):
+        service = AntiCheatService()
+        strokes = [Keystroke('c', 1000, 0), Keystroke('c', 1200, 0), Keystroke('a', 1400, 1)]
+        wpm, accuracy, _ = service.calculate_player_stats(strokes, 'cat', 30, final_char_index=2)
+        self.assertEqual(wpm, 0.8)
+        self.assertEqual(accuracy, 100)
+
+    def test_deleted_final_character_does_not_count_as_progress(self):
+        strokes = [Keystroke('c', 1000, 0), Keystroke('a', 1200, 1)]
+        wpm, _, _ = AntiCheatService().calculate_player_stats(strokes, 'cat', 30, final_char_index=1)
+        self.assertEqual(wpm, 0.4)
+
+    def test_skipped_deleted_character_is_not_restored_by_next_word(self):
+        strokes = [Keystroke('c', 1000, 0), Keystroke('a', 1200, 1)]
+        wpm, _, _ = AntiCheatService().calculate_player_stats(
+            strokes, 'cat dog', 30, final_char_index=4, final_characters={0: 'c'}
+        )
+        self.assertEqual(wpm, 0.4)
+
+    def test_high_rank_bots_are_near_players_speed(self):
+        with patch('app.services.bot.random.randint', return_value=0):
+            bot = BotConfig.from_player_stats(4000, 80)
+        self.assertEqual(bot.target_wpm, 80)
+        self.assertLessEqual(bot.correction_speed, 2)
+
+    def test_result_score_has_same_order_as_displayed_net_wpm(self):
+        service = AntiCheatService()
+        fast = [Keystroke('a', 1000 + i * 50, i) for i in range(12)]
+        slower_perfect = [Keystroke('a', 1000 + i * 100, i) for i in range(8)]
+        fast.append(Keystroke('x', 1700, 12))
+        fast_wpm, _, fast_score = service.calculate_player_stats(fast, 'a' * 20, 30)
+        slow_wpm, _, slow_score = service.calculate_player_stats(slower_perfect, 'a' * 20, 30)
+        self.assertGreater(fast_wpm, slow_wpm)
+        self.assertGreater(fast_score, slow_score)
+
+    def test_luck_boost_reduces_chance_of_no_reward(self):
+        for normal, boosted in ((GACHA_WEIGHTS, LUCK_BOOST_WEIGHTS), (PROFILE_GACHA_WEIGHTS, PROFILE_LUCK_BOOST_WEIGHTS)):
+            self.assertLess(boosted['better_luck_next_time'] / sum(boosted.values()),
+                            normal['better_luck_next_time'] / sum(normal.values()))

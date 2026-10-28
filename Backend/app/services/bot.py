@@ -92,13 +92,8 @@ class BotConfig:
         
         # Use player's average WPM with +10/-5 variance for more challenge
         if player_avg_wpm > 0:
-            if player_elo > 3000:
-                # Ranker Mode: Bot is ALWAYS faster than player average
-                # This forces high-rank players to perform above their average to win
-                wpm_variance = random.randint(20, 40)
-            else:
-                # Bot targets player's WPM with randomness (User WPM + (-5 to 10))
-                wpm_variance = random.randint(-5, 10)
+            # Vary around the player's established speed at every rank.
+            wpm_variance = random.randint(-5, 5)
                 
             base_wpm = max(10, int(player_avg_wpm + wpm_variance))
             
@@ -167,11 +162,11 @@ class BotConfig:
             burst_probability += 0.05
             correction_speed += 0.05
         if player_elo > 1800: # Gold
-            burst_probability += 5.1
-            correction_speed += 5.1
+            burst_probability += 0.10
+            correction_speed += 0.10
         if player_elo > 2400: # Platinum+
-            burst_probability += 10.15
-            correction_speed += 10.15
+            burst_probability += 0.15
+            correction_speed += 0.15
             
         # Cap values
         burst_probability = min(0.85, burst_probability) 
@@ -278,7 +273,6 @@ class TypingBot:
             # Check for error
             if random.random() > self.config.accuracy:
                 # Make a Mistake!
-                self.errors += 1
                 wrong_char = get_neighbor_key(char)
                 
                 # Action: Type wrong char
@@ -293,7 +287,6 @@ class TypingBot:
                 self._action_queue.append(BotAction(ActionType.BACKSPACE))
                 
                 # Action: Type correct char (often faster as they know it now)
-                self._current_speed_mult *= self.config.correction_speed 
                 self._action_queue.append(BotAction(ActionType.TYPE, char))
                 
             else:
@@ -385,7 +378,7 @@ class TypingBot:
                     # DECISION: We simulate the TIME taken to error, but we do not send 
                     # the "wrong" index to the opponent. The opponent just sees the bot 
                     # pause (making the error) and then continue.
-                    pass 
+                    self.errors += 1
                 
             elif action.type == ActionType.BACKSPACE:
                 # Simulating backspace time

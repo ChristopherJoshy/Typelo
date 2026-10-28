@@ -342,15 +342,16 @@ async def spin_gacha(current_user: UserInfo = Depends(get_current_user)):
                 
         for e_id, e_data in EFFECTS.items():
             if e_id not in unlocked_effects_set:
-                has_available["legendary_effect"] = True # All effects are legendary currently
+                has_available[f'{e_data["rarity"]}_effect'] = True
 
         # Zero out weights for fully collected rarities
         available_weight_sum = 0
-        for r_key in ["common", "uncommon", "rare", "epic", "legendary", "legendary_effect", "mythical"]:
-            if r_key in current_weights:
-                if not has_available.get(r_key, False):
-                    current_weights[r_key] = 0
-                available_weight_sum += current_weights[r_key]
+        for r_key in current_weights:
+            if r_key == "better_luck_next_time":
+                continue
+            if not has_available.get(r_key, False):
+                current_weights[r_key] = 0
+            available_weight_sum += current_weights[r_key]
         
         # If user has collected EVERYTHING available in the luck pool, 
         # we must fallback to something (coins) to avoid crash.
@@ -425,7 +426,7 @@ async def spin_gacha(current_user: UserInfo = Depends(get_current_user)):
         # Effect roll - extract rarity from result (e.g., "common_effect" -> "common")
         effect_rarity = result.replace("_effect", "")
         # Pick from effects of this rarity
-        all_effects_of_rarity = [e for e, d in EFFECTS.items() if d["rarity"] == effect_rarity]
+        all_effects_of_rarity = [e for e, d in EFFECTS.items() if d["rarity"] == effect_rarity and (not use_luck_boost or e not in unlocked_effects)]
         
         if not all_effects_of_rarity:
             # Fallback if no effects of this rarity exist
@@ -452,7 +453,7 @@ async def spin_gacha(current_user: UserInfo = Depends(get_current_user)):
     else: # Cursor (common, uncommon, rare, epic, legendary, ultra, divine, mythical)
         rarity = result
         # Pick from ALL cursors of this rarity (duplicates allowed)
-        all_cursors_of_rarity = [c for c, d in CURSORS.items() if d["rarity"] == rarity]
+        all_cursors_of_rarity = [c for c, d in CURSORS.items() if d["rarity"] == rarity and (not use_luck_boost or c not in unlocked_cursors)]
         if not all_cursors_of_rarity:
             # Fallback if no cursors of this rarity exist
             new_coins += 10
@@ -485,7 +486,7 @@ async def spin_gacha(current_user: UserInfo = Depends(get_current_user)):
     # Calculate net coin change
     # new_coins was calculated securely above (current - cost + winnings)
     # But for atomic update we want the delta
-    coin_delta = -SPIN_COST
+    coin_delta = -actual_spin_cost
     if spin_result_obj.coins_won:
         coin_delta += spin_result_obj.coins_won
     
@@ -499,16 +500,17 @@ async def spin_gacha(current_user: UserInfo = Depends(get_current_user)):
     update_result = await db.users.update_one(
         {
             "firebase_uid": current_user.uid,
-            "coins": {"$gte": SPIN_COST}
+            "coins": {"$gte": actual_spin_cost},
+            "crates_opened": user["crates_opened"] if "crates_opened" in user else {"$exists": False},
         },
         {
             "$inc": inc_ops,
             "$set": {
-                "unlocked_cursors": unlocked_cursors,
-                "unlocked_effects": unlocked_effects,
                 "pity_streak": new_streak,
                 "last_spin_result": result # Just store exact result for logs/future, logic doesn't depend on it anymore
-            }
+            },
+            **({"$addToSet": {"unlocked_cursors": spin_result_obj.cursor_id}} if spin_result_obj.type == "cursor" else
+               {"$addToSet": {"unlocked_effects": spin_result_obj.effect_id}} if spin_result_obj.type == "effect" else {})
         }
     )
     
@@ -749,13 +751,16 @@ async def spin_profile_crate(current_user: UserInfo = Depends(get_current_user))
         new_streak = pity_streak + 1 if not use_luck_boost else 0
         
         # Update database
-        await db.users.update_one(
-            {"firebase_uid": current_user.uid, "coins": {"$gte": actual_spin_cost}},
+        update_result = await db.users.update_one(
+            {"firebase_uid": current_user.uid, "coins": {"$gte": actual_spin_cost},
+             "profile_crates_opened": user["profile_crates_opened"] if "profile_crates_opened" in user else {"$exists": False}},
             {
                 "$inc": {"coins": -actual_spin_cost, "profile_crates_opened": 1},
                 "$set": {"profile_pity_streak": new_streak}
             }
         )
+        if update_result.matched_count == 0:
+            raise HTTPException(status_code=400, detail="Transaction failed: concurrent request detected")
         
         return ProfileSpinResult(
             type="nothing",
@@ -951,16 +956,16 @@ async def spin_profile_crate(current_user: UserInfo = Depends(get_current_user))
     update_result = await db.users.update_one(
         {
             "firebase_uid": current_user.uid,
-            "coins": {"$gte": actual_spin_cost}
+            "coins": {"$gte": actual_spin_cost},
+            "profile_crates_opened": user["profile_crates_opened"] if "profile_crates_opened" in user else {"$exists": False},
         },
         {
             "$inc": {"coins": -actual_spin_cost, "profile_crates_opened": 1},
             "$set": {
-                "unlocked_backgrounds": unlocked_backgrounds,
-                "unlocked_profile_effects": unlocked_profile_effects,
-                "unlocked_borders": unlocked_borders,
                 "profile_pity_streak": new_streak
-            }
+            },
+            **({"$addToSet": {{"background": "unlocked_backgrounds", "profile_effect": "unlocked_profile_effects", "border": "unlocked_borders"}[spin_result_obj.type]: spin_result_obj.item_id}}
+               if spin_result_obj.is_new else {})
         }
     )
     

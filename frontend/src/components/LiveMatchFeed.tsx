@@ -59,7 +59,7 @@ export default function LiveMatchFeed() {
     }
 
     return (
-        <div className="fixed bottom-4 left-4 z-50 max-w-xs w-full pointer-events-none">
+        <div aria-live="polite" className="pointer-events-none fixed bottom-4 left-4 z-50 w-[calc(100%-2rem)] max-w-xs">
             <AnimatePresence mode="popLayout">
                 {/* Active Matches */}
                 {activeMatches.map((match) => (
@@ -71,14 +71,14 @@ export default function LiveMatchFeed() {
                         transition={{ type: 'spring', damping: 20 }}
                         className="mb-2 pointer-events-auto"
                     >
-                        <div className="bg-bg-secondary/90 backdrop-blur-lg rounded-xl border border-white/10 p-3 shadow-xl">
+                        <div className="rounded-2xl border border-white/10 bg-[#111218]/95 p-4 shadow-[0_18px_55px_rgba(0,0,0,0.45)] backdrop-blur-lg">
                             {/* Mode badge */}
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="relative flex h-2 w-2">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                                 </span>
-                                <span className={`text-[10px] font-bold tracking-wider ${getModeColor(match.gameMode)}`}>
+                                <span className={`font-mono text-[10px] font-semibold tracking-[0.15em] ${getModeColor(match.gameMode)}`}>
                                     {getModeLabel(match.gameMode)} LIVE
                                 </span>
                             </div>
@@ -135,7 +135,7 @@ export default function LiveMatchFeed() {
                         transition={{ type: 'spring', damping: 20 }}
                         className="mb-2 pointer-events-auto"
                     >
-                        <div className="bg-bg-secondary/80 backdrop-blur-lg rounded-xl border border-white/5 p-3 shadow-lg">
+                        <div className="rounded-2xl border border-white/10 bg-[#111218]/95 p-4 shadow-[0_18px_55px_rgba(0,0,0,0.45)] backdrop-blur-lg">
                             {/* Mode badge */}
                             <div className="flex items-center gap-2 mb-2">
                                 <span className={`text-[10px] font-bold tracking-wider ${getModeColor(result.gameMode)}`}>

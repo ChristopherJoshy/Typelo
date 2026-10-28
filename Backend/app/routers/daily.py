@@ -32,6 +32,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta
+from pymongo import ReturnDocument
 import logging
 
 from app.database import Database
@@ -140,15 +141,12 @@ async def claim_daily_reward(current_user: UserInfo = Depends(get_current_user))
     coins_to_add = reward.get("coins", 0)
     
     # All users get full coin rewards (guest restrictions removed)
-    current_coins = user.get("coins", 0)
-    new_balance = current_coins + coins_to_add
-    
     update_ops = {
         "$set": {
             "last_daily_claim": now,
             "daily_streak": new_streak,
-            "coins": new_balance
-        }
+        },
+        "$inc": {"coins": coins_to_add},
     }
     
     effect_added = None
@@ -161,7 +159,7 @@ async def claim_daily_reward(current_user: UserInfo = Depends(get_current_user))
         if effect_id:
             current_effects = user.get("unlocked_effects", [])
             if effect_id not in current_effects:
-                update_ops["$push"] = {"unlocked_effects": effect_id}
+                update_ops["$addToSet"] = {"unlocked_effects": effect_id}
                 effect_added = effect_id
     
     elif reward["type"] == "cursor":
@@ -169,21 +167,24 @@ async def claim_daily_reward(current_user: UserInfo = Depends(get_current_user))
         if cursor_id:
             current_cursors = user.get("unlocked_cursors", ["default"])
             if cursor_id not in current_cursors:
-                update_ops["$push"] = {"unlocked_cursors": cursor_id}
+                update_ops["$addToSet"] = {"unlocked_cursors": cursor_id}
                 cursor_added = cursor_id
     
     elif reward["type"] == "special":
         luck_boost = reward.get("luck_boost", 0)
         if luck_boost > 0:
-            current_luck = user.get("luck_boost_spins", 0)
-            update_ops["$set"]["luck_boost_spins"] = current_luck + luck_boost
+            update_ops["$inc"]["luck_boost_spins"] = luck_boost
             luck_boost_added = luck_boost
     
     # Apply update
-    await db.users.update_one(
-        {"firebase_uid": current_user.uid},
-        update_ops
+    updated_user = await db.users.find_one_and_update(
+        {"firebase_uid": current_user.uid, "last_daily_claim": last_claim},
+        update_ops,
+        return_document=ReturnDocument.AFTER,
     )
+    if updated_user is None:
+        raise HTTPException(status_code=409, detail="Daily reward was already claimed")
+    new_balance = updated_user.get("coins", 0)
     
     logger.info(f"User {current_user.uid} claimed daily reward: Day {current_day}, Streak {new_streak}")
     

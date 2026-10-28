@@ -39,7 +39,7 @@
  * stores: Game store.
  */
 
-import React, { RefObject, KeyboardEvent, ChangeEvent, useMemo, useEffect, useRef, useState, memo } from 'react'
+import React, { RefObject, KeyboardEvent, ChangeEvent, useMemo, useEffect, useRef, useState, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGameStore } from '../stores/gameStore'
 import { CursorInfo, EffectInfo, getCursorInfo, getEffectInfo } from '../types'
@@ -374,23 +374,23 @@ const MemoizedCharacter = memo(({
 
   // Trigger Player Burst
   useEffect(() => {
-    if (status === 'correct' && prevStatusRef.current !== 'correct') {
+    if (playerConfig.effect && status === 'correct' && prevStatusRef.current !== 'correct') {
       setShowPlayerBurst(true)
     }
     prevStatusRef.current = status
-  }, [status])
+  }, [status, playerConfig.effect])
 
   // Trigger Opponent Burst
   useEffect(() => {
-    if (isOpponentPast && !prevOppPastRef.current) {
+    if (opponentConfig.effect && isOpponentPast && !prevOppPastRef.current) {
       setShowOpponentBurst(true)
     }
     prevOppPastRef.current = isOpponentPast
-  }, [isOpponentPast])
+  }, [isOpponentPast, opponentConfig.effect])
 
   // Handlers to cleanup bursts
-  const handlePlayerBurstComplete = () => setShowPlayerBurst(false)
-  const handleOpponentBurstComplete = () => setShowOpponentBurst(false)
+  const handlePlayerBurstComplete = useCallback(() => setShowPlayerBurst(false), [])
+  const handleOpponentBurstComplete = useCallback(() => setShowOpponentBurst(false), [])
 
   // Styling logic
   let charStyle: React.CSSProperties = {}
@@ -662,7 +662,7 @@ const MemoizedWord = memo(({
         />
       )}
 
-      {wordIdx === opponentWordIndex && opponentCharIndex >= word.length && (
+      {wordIdx === opponentWordIndex && opponentCharIndex - words.slice(0, wordIdx).reduce((sum, w) => sum + w.length + 1, 0) >= word.length && (
         <motion.span
           className="absolute right-0 top-0 w-[8px] h-full rounded-full"
           style={{

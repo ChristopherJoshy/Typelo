@@ -12,7 +12,7 @@
  * Creates an explosive visual effect with rarity-themed colors.
  */
 
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { useMemo } from 'react'
 import { getRarityColor } from '../types'
 
@@ -37,10 +37,11 @@ const RARITY_PALETTES: Record<string, string[]> = {
 export default function GachaReveal({ isVisible, rarity, children, onComplete }: GachaRevealProps) {
     const palette = RARITY_PALETTES[rarity] || RARITY_PALETTES.common
     const primaryColor = getRarityColor(rarity as any)
+    const reduceMotion = useReducedMotion()
 
     // Generate spray particles
     const particles = useMemo(() => {
-        const count = rarity === 'mythical' ? 40 : rarity === 'legendary' || rarity === 'divine' ? 30 : 20
+        const count = reduceMotion ? 0 : rarity === 'mythical' ? 40 : rarity === 'legendary' || rarity === 'divine' ? 30 : 20
         return Array.from({ length: count }, (_, i) => ({
             id: i,
             angle: (i / count) * 360 + Math.random() * 30,
@@ -50,11 +51,11 @@ export default function GachaReveal({ isVisible, rarity, children, onComplete }:
             color: palette[i % palette.length],
             duration: 0.4 + Math.random() * 0.3,
         }))
-    }, [rarity, palette])
+    }, [rarity, palette, reduceMotion])
 
     // Generate splatter blobs
     const splatters = useMemo(() => {
-        const count = rarity === 'mythical' ? 8 : 5
+        const count = reduceMotion ? 0 : rarity === 'mythical' ? 8 : 5
         return Array.from({ length: count }, (_, i) => ({
             id: i,
             angle: (i / count) * 360 + Math.random() * 60,
@@ -65,7 +66,7 @@ export default function GachaReveal({ isVisible, rarity, children, onComplete }:
             delay: 0.1 + Math.random() * 0.15,
             color: palette[i % palette.length],
         }))
-    }, [rarity, palette])
+    }, [rarity, palette, reduceMotion])
 
     return (
         <AnimatePresence>
@@ -74,7 +75,7 @@ export default function GachaReveal({ isVisible, rarity, children, onComplete }:
                     {/* Background flash */}
                     <motion.div
                         initial={{ opacity: 0 }}
-                        animate={{ opacity: [0, 0.4, 0] }}
+                        animate={{ opacity: reduceMotion ? 0 : [0, 0.25, 0] }}
                         transition={{ duration: 0.3 }}
                         className="absolute inset-0"
                         style={{ backgroundColor: primaryColor }}
@@ -147,7 +148,7 @@ export default function GachaReveal({ isVisible, rarity, children, onComplete }:
                     {/* Center ring burst */}
                     <motion.div
                         initial={{ scale: 0, opacity: 1 }}
-                        animate={{ scale: 3, opacity: 0 }}
+                        animate={{ scale: reduceMotion ? 1 : 3, opacity: 0 }}
                         transition={{ duration: 0.6, ease: 'easeOut' }}
                         className="absolute rounded-full border-4"
                         style={{
@@ -160,7 +161,7 @@ export default function GachaReveal({ isVisible, rarity, children, onComplete }:
                     {/* Inner ring */}
                     <motion.div
                         initial={{ scale: 0, opacity: 1 }}
-                        animate={{ scale: 2, opacity: 0 }}
+                        animate={{ scale: reduceMotion ? 1 : 2, opacity: 0 }}
                         transition={{ duration: 0.4, delay: 0.1, ease: 'easeOut' }}
                         className="absolute rounded-full border-2"
                         style={{
@@ -172,7 +173,7 @@ export default function GachaReveal({ isVisible, rarity, children, onComplete }:
 
                     {/* Content reveal */}
                     <motion.div
-                        initial={{ scale: 0.5, opacity: 0 }}
+                        initial={{ scale: reduceMotion ? 1 : 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         transition={{
                             type: 'spring',
@@ -187,7 +188,7 @@ export default function GachaReveal({ isVisible, rarity, children, onComplete }:
                     </motion.div>
 
                     {/* Mythical rainbow shimmer */}
-                    {rarity === 'mythical' && (
+                    {rarity === 'mythical' && !reduceMotion && (
                         <motion.div
                             initial={{ opacity: 0, rotate: 0 }}
                             animate={{

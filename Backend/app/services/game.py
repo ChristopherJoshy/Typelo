@@ -56,6 +56,7 @@
 # app.constants: Game constants.
 
 import asyncio
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Optional, List, Callable, Awaitable
@@ -83,6 +84,7 @@ LEADERBOARD_TOP_N = 10
 LEADERBOARD_TOP_3 = 3
 LEADERBOARD_COIN_BONUS = 0.20  # 20% extra coins for top 4-10
 TOP_3_COIN_BONUS = 0.50  # 50% extra coins for top 3 players
+INPUT_DELIVERY_GRACE_SECONDS = 1.5
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +132,7 @@ class PlayerState:
     
     # Typing progress
     keystrokes: List[Keystroke] = field(default_factory=list)
+    final_characters: Dict[int, str] = field(default_factory=dict)
     current_char_index: int = 0
     current_word_index: int = 0
     chars_typed: int = 0
@@ -138,6 +141,8 @@ class PlayerState:
     
     # Deduplication: track last processed char_index to prevent duplicates
     last_processed_char_index: int = -1
+    last_input_event_id: int = 0
+    last_input_received_at: float = 0.0
     
     # Calculated stats
     wpm: float = 0.0
@@ -369,7 +374,7 @@ class GameService:
             start_delay_seconds = 5
             scheduled_start_time = datetime.fromtimestamp(current_time.timestamp() + start_delay_seconds, timezone.utc)
             
-            session.started_at = current_time # This tracks when the session was created/ready
+            session.started_at = scheduled_start_time
             session.state = MatchState.WAITING
             
             logger.info(f"Game session ready: {match_id}. Scheduling start at {scheduled_start_time} (in {start_delay_seconds}s)")
@@ -398,7 +403,7 @@ class GameService:
 
             # 2. Schedule the actual state transition and timer start on the backend
             async def scheduled_start():
-                await asyncio.sleep(start_delay_seconds)
+                await asyncio.sleep(max(0, (scheduled_start_time - datetime.now(timezone.utc)).total_seconds()))
                 
                 if session.state != MatchState.WAITING:
                     logger.warning(f"Aborting scheduled start for {match_id} - state is {session.state}")
@@ -445,19 +450,19 @@ class GameService:
         
         async def on_bot_progress(char_index: int, word_index: int):
             # Update bot's position
-            session.player2.current_char_index = char_index
+            total_chars = sum(len(w) + 1 for w in session.words[:word_index]) + char_index
+            session.player2.current_char_index = total_chars
             session.player2.current_word_index = word_index
             session.player2.words_completed = word_index
             
             # Calculate total chars typed for tracking
-            total_chars = sum(len(w) + 1 for w in session.words[:word_index]) + char_index
             session.player2.chars_typed = total_chars
             
             # Notify human player of bot progress
             if session.player1.uid in session._on_opponent_progress:
                 try:
                     await session._on_opponent_progress[session.player1.uid](
-                        char_index, word_index
+                        total_chars, word_index
                     )
                 except Exception as e:
                     # Log but don't crash if notification fails
@@ -471,14 +476,25 @@ class GameService:
     
     async def _game_timer(self, session: GameSession) -> None:
         """Timer for game duration - ensures game ends when time expires"""
-        # Frontend countdown handling is now synchronized by timestamp.
-        # We don't need a specific buffer here if we trust the start_game scheduling,
-        # but a small buffer helps ensure we don't kill the game exactly when it starts if there's lag.
-        # The session.duration sleep is the main thing.
-        # The scheduled_start task handles the initial 5s wait.
-        pass
-        
-        await asyncio.sleep(session.duration)  # Main game timer (30s)
+        elapsed = (datetime.now(timezone.utc) - session.started_at).total_seconds() if session.started_at else 0
+        deadline = time.monotonic() + max(0, session.duration - elapsed)
+        await asyncio.sleep(max(0, deadline - time.monotonic()))
+
+        # Keep a short receive window for keystrokes typed before the deadline
+        # but held in a slow connection's TCP/WebSocket buffers. Extend the
+        # settle point when such events arrive, with a hard upper bound.
+        settle_at = deadline + INPUT_DELIVERY_GRACE_SECONDS
+        hard_settle_at = deadline + 5.0
+        while session.state in (MatchState.ACTIVE, MatchState.WAITING):
+            latest_input = max(
+                session.player1.last_input_received_at,
+                session.player2.last_input_received_at,
+            )
+            target = min(max(settle_at, latest_input + 0.75), hard_settle_at)
+            delay = target - time.monotonic()
+            if delay <= 0:
+                break
+            await asyncio.sleep(delay)
         
         # End game if still active or waiting (auto-started but no typing)
         if session.state in (MatchState.ACTIVE, MatchState.WAITING):
@@ -520,7 +536,7 @@ class GameService:
                     session.started_at = datetime.now(timezone.utc)
             else:
                 logger.debug(f"Keystroke ignored - game {match_id} still preparing and player {player_uid} not ready")
-                return True  # Return True to avoid error message to client
+                return False
         
         # Start game on first keystroke from any player
         # Only start if in WAITING state (not PREPARING - callbacks may not be registered yet)
@@ -532,6 +548,8 @@ class GameService:
             return False
         
         if session.state != MatchState.ACTIVE:
+            return False
+        if not self._input_within_match(session, timestamp):
             return False
         
         # Lazy start removed - bot starts with synchronized timer loop
@@ -553,9 +571,21 @@ class GameService:
         
         # Handle backspace - just update position, don't record keystroke
         if char == '\b':
-            player.current_char_index = char_index
+            # Backspace may only remove the most recently accepted character.
+            # This prevents delayed or malformed events from moving the cursor.
+            if char_index == player.last_processed_char_index + 1:
+                return True  # Duplicate delivery of the previous backspace.
+            if char_index < player.last_processed_char_index:
+                return True  # A stale backspace must not move the cursor.
+            if char_index != player.last_processed_char_index:
+                return False
+            word_start = sum(len(word) + 1 for word in session.words[:player.current_word_index])
+            word_end = word_start + len(session.words[player.current_word_index]) if player.current_word_index < len(session.words) else word_start
+            player.current_char_index = max(word_start, min(char_index, word_end))
+            player.final_characters.pop(char_index, None)
             # Update dedup tracker for backspace (allow going backwards)
             player.last_processed_char_index = char_index - 1
+            player.last_input_received_at = time.monotonic()
             return True
         
         # ===== KEYSTROKE DEDUPLICATION =====
@@ -565,9 +595,24 @@ class GameService:
             logger.debug(f"Duplicate/out-of-order keystroke rejected: player={player_uid}, "
                         f"char_index={char_index}, last_processed={player.last_processed_char_index}")
             return True  # Return True to avoid error message (it's not really an error, just a duplicate)
+
+        # WebSockets preserve message order. A gap means the client has lost
+        # keystrokes (usually during reconnect) or is trying to jump ahead.
+        # Never let a gap corrupt authoritative progress or the final score.
+        if char_index != player.last_processed_char_index + 1:
+            logger.warning(
+                "Keystroke gap rejected for %s in %s: expected %s, got %s",
+                player_uid, match_id, player.last_processed_char_index + 1, char_index
+            )
+            return False
         
         # Create keystroke
-        keystroke = Keystroke(char=char, timestamp=timestamp, char_index=char_index)
+        if player.current_word_index >= len(session.words):
+            return False
+        word_start = sum(len(word) + 1 for word in session.words[:player.current_word_index])
+        word_end = word_start + len(session.words[player.current_word_index])
+        within_word = word_start <= char_index < word_end
+        keystroke = Keystroke(char=char, timestamp=timestamp, char_index=char_index if within_word else -1)
         
         # Validate against previous keystroke
         prev_keystroke = player.keystrokes[-1] if player.keystrokes else None
@@ -578,8 +623,11 @@ class GameService:
         
         # Record keystroke and update dedup tracker
         player.keystrokes.append(keystroke)
-        player.current_char_index = char_index
+        if within_word:
+            player.final_characters[char_index] = char
+        player.current_char_index = min(char_index + 1, word_end)
         player.last_processed_char_index = char_index  # Track for deduplication
+        player.last_input_received_at = time.monotonic()
         
         # Update total chars typed (approximate for WPM)
         # We can't easily calculate exact total without iterating words, 
@@ -587,27 +635,38 @@ class GameService:
         player.chars_typed += 1
         
         # Check if character is correct
-        if char_index < len(session.word_text):
+        if within_word:
             expected = session.word_text[char_index]
             if char != expected:
                 player.errors += 1
+        else:
+            player.errors += 1
         
         return True
     
+    @staticmethod
+    def _input_within_match(session: GameSession, timestamp: Optional[int]) -> bool:
+        if timestamp is None or session.started_at is None:
+            return True
+        start_ms = session.started_at.timestamp() * 1000
+        # Allow modest clock-estimation error while bounding late submissions.
+        return start_ms - 250 <= timestamp <= start_ms + session.duration * 1000 + 250
+
     async def process_word_complete(
         self,
         match_id: str,
         player_uid: str,
-        word_index: int
+        word_index: int,
+        timestamp: Optional[int] = None,
     ) -> bool:
         """Process word completion and check for game end.
         
         Increments words_completed when player moves to the next word.
-        Word accuracy is already reflected in the overall score calculation
-        through Net WPM (errors subtracted) and accuracy multiplier.
+        Word accuracy is reflected by the final typed text and the separate
+        accuracy stat; completing a word advances shared passage progress.
         """
         session = self._sessions.get(match_id)
-        if not session or session.state != MatchState.ACTIVE:
+        if not session or session.state != MatchState.ACTIVE or not self._input_within_match(session, timestamp):
             return False
         
         if session.player1.uid == player_uid:
@@ -618,8 +677,8 @@ class GameService:
             return False
         
         # Validate word_index is sequential (no skipping words)
-        if word_index > player.current_word_index + 1:
-            logger.warning(f"Player {player_uid} tried to skip from word {player.current_word_index} to {word_index}")
+        if word_index != player.current_word_index:
+            logger.warning(f"Player {player_uid} submitted word {word_index} while on word {player.current_word_index}")
             return False
         
         # Validate word_index is within bounds
@@ -627,15 +686,24 @@ class GameService:
             return False
         
         # Update player state
-        player.current_word_index = word_index
+        word_end = sum(len(word) + 1 for word in session.words[:word_index]) + len(session.words[word_index])
+        player.final_characters = {index: char for index, char in player.final_characters.items() if index < word_end}
+        player.current_word_index = min(word_index + 1, len(session.words) - 1)
+        player.current_char_index = min(
+            sum(len(word) + 1 for word in session.words[:word_index + 1]),
+            len(session.word_text),
+        )
         # word_index is 0-indexed, so words_completed = word_index + 1
         # After completing word 0, you have completed 1 word
         player.words_completed = word_index + 1
-        
-        # Check if player completed all words - trigger early game end
+        player.last_processed_char_index = player.current_char_index - 1
+        player.last_input_received_at = time.monotonic()
+
+        # Keep the completed-word cursor at the true end of the passage. A
+        # completed passage does not end a fixed-duration match early: doing so
+        # would discard the opponent's in-flight input and bias the result.
         if word_index >= len(session.words) - 1:
-            logger.info(f"Player {player_uid} completed all words! Ending game early.")
-            asyncio.create_task(self.end_game(match_id))
+            player.current_word_index = len(session.words)
         
         return True
     
@@ -673,28 +741,19 @@ class GameService:
         if session.bot:
             session.bot.stop()
             bot_result = session.bot.get_result()
-            session.player2.wpm = bot_result["wpm"]
-            session.player2.accuracy = bot_result["accuracy"]
+            bot_correct_chars = max(0, bot_result["chars_typed"] - bot_result["words_completed"])
+            bot_errors = bot_result["errors"]
+            session.player2.accuracy = 100 * bot_correct_chars / max(1, bot_correct_chars + bot_errors)
             
-            # Calculate Bot Score using same WPM-weighted formula as player
-            # We must use the actual elapsed time of the match
-            elapsed_seconds = (session.ended_at - session.started_at).total_seconds() if session.started_at else session.duration
-            if elapsed_seconds < 0.1: elapsed_seconds = 0.1
-            
+            # The bot always corrects its simulated mistakes, so they affect
+            # accuracy but are not final-text errors for score calculation.
             net_wpm = anti_cheat_service.calculate_score(
-                chars_typed=bot_result["chars_typed"],
-                errors=bot_result["errors"],
-                duration_seconds=elapsed_seconds
+                chars_typed=bot_correct_chars,
+                errors=0,
+                duration_seconds=session.duration
             )
-            # Use new additive formula: (NetWPM * 100) + (Accuracy * 10) + (Words * 5)
-            # This matches the player calculation in anticheat.py
-            bot_accuracy = session.player2.accuracy
-            
-            wpm_score = net_wpm * 100
-            accuracy_score = bot_accuracy * 10
-            progress_score = session.player2.words_completed * 5
-            
-            session.player2.score = round(wpm_score + accuracy_score + progress_score, 1)
+            session.player2.wpm = round(net_wpm, 1)
+            session.player2.score = session.player2.wpm * 100
         
         # Calculate player stats
         for player in [session.player1, session.player2]:
@@ -706,7 +765,9 @@ class GameService:
                     session.duration,
                     words_completed=player.words_completed,
                     chars_typed=player.chars_typed,
-                    errors=player.errors
+                    errors=player.errors,
+                    final_char_index=player.current_char_index,
+                    final_characters=player.final_characters,
                 )
                 player.wpm = wpm
                 player.accuracy = accuracy
@@ -1426,7 +1487,7 @@ class GameService:
         self._cleanup_session(match_id)
     
     async def handle_player_disconnect(self, match_id: str, player_uid: str) -> None:
-        """Handle a player disconnecting mid-game - they forfeit and opponent wins"""
+        """Forfeit pre-game disconnects; let timed matches finish on accepted score."""
         session = self._sessions.get(match_id)
         if not session:
             return
@@ -1438,9 +1499,17 @@ class GameService:
         
         logger.info(f"Player {player_uid} disconnected from match {match_id}, forfeiting...")
         
-        # If game is active or preparing, the disconnecting player forfeits
-        if session.state in (MatchState.ACTIVE, MatchState.WAITING, MatchState.PREPARING):
-            # Use forfeit logic - disconnecting player loses, opponent wins
+        # Once a timed match is active, a disconnect must not override the
+        # score already earned. The match clock remains authoritative and the
+        # timer will settle the result normally if the player does not return.
+        if session.state == MatchState.ACTIVE:
+            logger.info(
+                "Keeping active match %s running after %s disconnected; scoring by accepted progress",
+                match_id, player_uid
+            )
+            return
+
+        if session.state in (MatchState.WAITING, MatchState.PREPARING):
             await self._forfeit_match(match_id, player_uid)
         else:
             # Just cleanup if already finished

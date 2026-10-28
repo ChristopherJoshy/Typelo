@@ -53,6 +53,7 @@
 import json
 import asyncio
 import logging
+import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from typing import Optional, Dict
 
@@ -69,7 +70,8 @@ from app.models.match import (
     OpponentProgressMessage,
     GameEndMessage,
     ErrorMessage,
-    MatchResult
+    MatchResult,
+    MatchState,
 )
 from app.models.user import get_rank_from_elo
 from app.routers.auth import verify_firebase_token
@@ -84,13 +86,17 @@ class ConnectionManager:
         self.active_connections: Dict[str, WebSocket] = {}
         self.user_info: Dict[str, dict] = {}
         self._message_counts: Dict[str, int] = {}
-        self._last_reset: float = asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else 0
+        self._last_reset: float = time.monotonic()
         self._rate_limit_window: float = 1.0
         self._max_messages_per_window: int = 50
         self._rate_limit_lock = asyncio.Lock()
         self._periodic_broadcast_task: Optional[asyncio.Task] = None
         self._ip_to_user: Dict[str, str] = {}
         self._user_to_ip: Dict[str, str] = {}
+        self._pending_forfeits: Dict[str, asyncio.Task] = {}
+        self._pending_results: Dict[str, tuple[float, dict]] = {}
+        self._pending_progress: Dict[str, dict] = {}
+        self._progress_tasks: Dict[str, asyncio.Task] = {}
     
     def get_client_ip(self, websocket: WebSocket) -> str:
         forwarded = websocket.headers.get("x-forwarded-for")
@@ -131,10 +137,7 @@ class ConnectionManager:
 
     async def check_rate_limit(self, user_id: str) -> bool:
         async with self._rate_limit_lock:
-            try:
-                current_time = asyncio.get_event_loop().time()
-            except RuntimeError:
-                return True
+            current_time = time.monotonic()
             
             if current_time - self._last_reset > self._rate_limit_window:
                 self._message_counts.clear()
@@ -149,6 +152,17 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, user_id: str, display_name: str, photo_url: Optional[str], elo: int, client_ip: str, equipped_cursor: str = "default", equipped_effect: Optional[str] = None):
         await websocket.accept()
+        progress_task = self._progress_tasks.pop(user_id, None)
+        if progress_task and progress_task is not asyncio.current_task():
+            progress_task.cancel()
+        self._pending_progress.pop(user_id, None)
+        pending_forfeit = self._pending_forfeits.pop(user_id, None)
+        if pending_forfeit:
+            pending_forfeit.cancel()
+        previous_socket = self.active_connections.get(user_id)
+        previous_ip = self._user_to_ip.get(user_id)
+        if previous_ip and previous_ip != client_ip and self._ip_to_user.get(previous_ip) == user_id:
+            del self._ip_to_user[previous_ip]
         self.active_connections[user_id] = websocket
         self.user_info[user_id] = {
             "user_id": user_id,
@@ -160,10 +174,24 @@ class ConnectionManager:
         }
         self._ip_to_user[client_ip] = user_id
         self._user_to_ip[user_id] = client_ip
+        if previous_socket is not None and previous_socket is not websocket:
+            try:
+                await previous_socket.close(code=1000, reason="Connection replaced")
+            except Exception:
+                logger.debug("Previous connection was already closed for %s", user_id)
         logger.info(f"User {user_id} connected from IP {client_ip}")
         self.start_periodic_broadcast()
+        pending_result = self._pending_results.pop(user_id, None)
+        if pending_result and pending_result[0] > time.monotonic():
+            await self.send_json(user_id, pending_result[1])
 
-    def disconnect(self, user_id: str):
+    def disconnect(self, user_id: str, websocket: Optional[WebSocket] = None):
+        if websocket is not None and self.active_connections.get(user_id) is not websocket:
+            return
+        progress_task = self._progress_tasks.pop(user_id, None)
+        if progress_task and progress_task is not asyncio.current_task():
+            progress_task.cancel()
+        self._pending_progress.pop(user_id, None)
         if user_id in self.active_connections:
             del self.active_connections[user_id]
         if user_id in self.user_info:
@@ -174,12 +202,66 @@ class ConnectionManager:
             del self._ip_to_user[ip]
 
     async def send_json(self, user_id: str, data: dict):
-        if user_id in self.active_connections:
+        websocket = self.active_connections.get(user_id)
+        if websocket is None and data.get("type") == "GAME_END":
+            now = time.monotonic()
+            self._pending_results = {uid: item for uid, item in self._pending_results.items() if item[0] > now}
+            self._pending_results[user_id] = (now + 60, data)
+        if websocket is not None:
             try:
-                await self.active_connections[user_id].send_json(data)
+                await websocket.send_json(data)
             except Exception as e:
                 logger.error(f"Error sending JSON to {user_id}: {e}")
-                self.disconnect(user_id)
+                self.disconnect(user_id, websocket)
+                if data.get("type") == "GAME_END":
+                    self._pending_results[user_id] = (time.monotonic() + 60, data)
+
+    def publish_progress(self, user_id: str, data: dict):
+        """Coalesce cursor updates so a slow socket only receives the latest position."""
+        self._pending_progress[user_id] = data
+        task = self._progress_tasks.get(user_id)
+        if task is None or task.done():
+            self._progress_tasks[user_id] = asyncio.create_task(self._flush_progress(user_id))
+
+    async def _flush_progress(self, user_id: str):
+        try:
+            while user_id in self._pending_progress:
+                data = self._pending_progress.pop(user_id)
+                websocket = self.active_connections.get(user_id)
+                if websocket is not None:
+                    try:
+                        await asyncio.wait_for(websocket.send_json(data), timeout=1)
+                    except Exception:
+                        self.disconnect(user_id, websocket)
+                        try:
+                            await websocket.close(code=1013, reason="Progress stream stalled")
+                        except Exception:
+                            pass
+                        break
+                if user_id in self._pending_progress:
+                    await asyncio.sleep(0.05)
+        except asyncio.CancelledError:
+            raise
+        finally:
+            if self._progress_tasks.get(user_id) is asyncio.current_task():
+                self._progress_tasks.pop(user_id, None)
+            if user_id in self._pending_progress and user_id in self.active_connections:
+                self._progress_tasks[user_id] = asyncio.create_task(self._flush_progress(user_id))
+
+    def schedule_forfeit(self, user_id: str, match_id: str):
+        async def after_grace():
+            try:
+                await asyncio.sleep(20)
+                if user_id not in self.active_connections:
+                    await game_service.handle_player_disconnect(match_id, user_id)
+            finally:
+                if self._pending_forfeits.get(user_id) is asyncio.current_task():
+                    self._pending_forfeits.pop(user_id, None)
+
+        existing = self._pending_forfeits.pop(user_id, None)
+        if existing:
+            existing.cancel()
+        self._pending_forfeits[user_id] = asyncio.create_task(after_grace())
 
     def get_connection(self, user_id: str) -> Optional[WebSocket]:
         return self.active_connections.get(user_id)
@@ -194,29 +276,24 @@ class ConnectionManager:
         if user_id in self.user_info:
             self.user_info[user_id]["elo"] = new_elo
 
+    async def _broadcast(self, message: dict):
+        async def send_one(user_id: str, websocket: WebSocket):
+            try:
+                await asyncio.wait_for(websocket.send_json(message), timeout=3)
+            except Exception:
+                self.disconnect(user_id, websocket)
+
+        await asyncio.gather(*(send_one(user_id, ws) for user_id, ws in list(self.active_connections.items())))
+
     async def broadcast_online_count(self):
         count = self.get_online_count()
         message = {"type": "ONLINE_COUNT", "count": count}
-        disconnected = set()
-        for user_id, ws in list(self.active_connections.items()):
-            try:
-                await ws.send_json(message)
-            except Exception:
-                disconnected.add(user_id)
-        for user_id in disconnected:
-            self.disconnect(user_id)
+        await self._broadcast(message)
 
     async def broadcast_online_users(self):
         users = self.get_online_users()
         message = {"type": "ONLINE_USERS", "users": users}
-        disconnected = set()
-        for user_id, ws in list(self.active_connections.items()):
-            try:
-                await ws.send_json(message)
-            except Exception:
-                disconnected.add(user_id)
-        for user_id in disconnected:
-            self.disconnect(user_id)
+        await self._broadcast(message)
 
     async def broadcast_match_started(
         self,
@@ -238,14 +315,7 @@ class ConnectionManager:
             "is_bot_match": is_bot_match,
             "game_mode": game_mode
         }
-        disconnected = set()
-        for user_id, ws in list(self.active_connections.items()):
-            try:
-                await ws.send_json(message)
-            except Exception:
-                disconnected.add(user_id)
-        for user_id in disconnected:
-            self.disconnect(user_id)
+        await self._broadcast(message)
         logger.info(f"Broadcasted match started: {player1_name} vs {player2_name}")
 
     async def broadcast_match_ended(
@@ -272,14 +342,7 @@ class ConnectionManager:
             "is_tie": is_tie,
             "game_mode": game_mode
         }
-        disconnected = set()
-        for user_id, ws in list(self.active_connections.items()):
-            try:
-                await ws.send_json(message)
-            except Exception:
-                disconnected.add(user_id)
-        for user_id in disconnected:
-            self.disconnect(user_id)
+        await self._broadcast(message)
         if is_tie:
             logger.info(f"Broadcasted match ended (TIE): {winner_name} vs {loser_name}")
         else:
@@ -287,6 +350,40 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+async def _gate_input_event(user_id: str, player, event_id) -> bool:
+    """Deduplicate reliable input replays and request missing event frames."""
+    if event_id is None:
+        return True  # Compatible with clients deployed before input acknowledgements.
+    if type(event_id) is not int or event_id < 1:
+        return False
+    if event_id <= player.last_input_event_id:
+        await manager.send_json(user_id, {
+            "type": "GAME_INPUT_ACK",
+            "event_id": player.last_input_event_id,
+        })
+        return False
+    if event_id != player.last_input_event_id + 1:
+        await manager.send_json(user_id, {
+            "type": "GAME_INPUT_ACK",
+            "event_id": player.last_input_event_id,
+            "retry": True,
+        })
+        return False
+    return True
+
+
+async def _ack_input_event(user_id: str, player, event_id, accepted: bool) -> None:
+    if event_id is None:
+        return
+    if accepted:
+        player.last_input_event_id = event_id
+    await manager.send_json(user_id, {
+        "type": "GAME_INPUT_ACK",
+        "event_id": player.last_input_event_id,
+        "retry": not accepted,
+    })
 
 
 @router.websocket("/ws")
@@ -389,11 +486,34 @@ async def match_websocket(
     
     in_queue = False
     queue_task = None
-    current_match_id = None
+    current_match_id = game_service.get_active_match_id(user_id)
     connected = True
     
     last_sent_char_index = -1
-    PROGRESS_THROTTLE_CHARS = 1
+
+    # A reconnect keeps the in-memory match alive. Restore the authoritative
+    # start time and opponent position before replaying any buffered input.
+    active_session = game_service.get_session(current_match_id) if current_match_id else None
+    if active_session and active_session.state in (MatchState.WAITING, MatchState.ACTIVE):
+        if active_session.started_at:
+            await manager.send_json(user_id, GameStartMessage(
+                timestamp=int(active_session.started_at.timestamp() * 1000),
+                duration=active_session.duration,
+            ).model_dump())
+        if active_session.player1.uid == user_id:
+            current_player, opponent = active_session.player1, active_session.player2
+        else:
+            current_player, opponent = active_session.player2, active_session.player1
+
+        await manager.send_json(user_id, OpponentProgressMessage(
+            char_index=opponent.current_char_index,
+            word_index=opponent.current_word_index,
+        ).model_dump())
+        if not opponent.is_bot:
+            manager.publish_progress(opponent.uid, OpponentProgressMessage(
+                char_index=current_player.current_char_index,
+                word_index=current_player.current_word_index,
+            ).model_dump())
     
     try:
         while connected:
@@ -431,6 +551,25 @@ async def match_websocket(
                 )
                 await manager.send_json(user_id, error_msg.model_dump())
                 continue
+
+            if message_type in {"JOIN_QUEUE", "JOIN_TRAINING_QUEUE", "JOIN_FRIENDS_QUEUE"}:
+                # Equipment can change while the socket stays open. Read it at
+                # queue time so opponents see the currently equipped cosmetics.
+                try:
+                    profile = await Database.get_db().users.find_one(
+                        {"firebase_uid": user_id},
+                        {"equipped_cursor": 1, "equipped_effect": 1, "elo_rating": 1},
+                    )
+                    if profile:
+                        equipped_cursor = profile.get("equipped_cursor") or "default"
+                        equipped_effect = profile.get("equipped_effect")
+                        elo = profile.get("elo_rating", elo)
+                        if user_id in manager.user_info:
+                            manager.user_info[user_id].update(
+                                equipped_cursor=equipped_cursor, equipped_effect=equipped_effect, elo=elo
+                            )
+                except Exception:
+                    logger.exception("Could not refresh cosmetics for %s", user_id)
             
             if message_type == "JOIN_QUEUE":
                 if in_queue:
@@ -439,7 +578,7 @@ async def match_websocket(
                 in_queue = True
                 
                 async def on_match_found(pending: PendingMatch):
-                    nonlocal current_match_id, in_queue, queue_task
+                    nonlocal current_match_id, in_queue, queue_task, last_sent_char_index
                     
                     logger.info(f"on_match_found called for user {user_id}, match {pending.match_id}")
                     
@@ -529,7 +668,7 @@ async def match_websocket(
                                 char_index=char_index,
                                 word_index=word_index
                             )
-                            await manager.send_json(user_id, progress_msg.model_dump())
+                            manager.publish_progress(user_id, progress_msg.model_dump())
                         
                         async def on_game_end(result: MatchResult):
                             # Manually construct dict to avoid Pydantic validation issues that might be swallowing errors
@@ -602,7 +741,8 @@ async def match_websocket(
                 import time
                 await manager.send_json(user_id, {
                     "type": "PONG",
-                    "server_time": int(time.time() * 1000)
+                    "server_time": int(time.time() * 1000),
+                    "timestamp": data.get("timestamp"),
                 })
             
             elif message_type == "LEAVE_QUEUE":
@@ -620,7 +760,7 @@ async def match_websocket(
                 in_queue = True
                 
                 async def on_training_match_found(pending: PendingMatch):
-                    nonlocal current_match_id, in_queue, queue_task
+                    nonlocal current_match_id, in_queue, queue_task, last_sent_char_index
                     
                     logger.info(f"on_training_match_found called for user {user_id}, match {pending.match_id}")
                     
@@ -709,7 +849,7 @@ async def match_websocket(
                                 char_index=char_index,
                                 word_index=word_index
                             )
-                            await manager.send_json(user_id, progress_msg.model_dump())
+                            manager.publish_progress(user_id, progress_msg.model_dump())
                         
                         async def on_game_end(result: MatchResult):
                             # Manually construct dict to avoid Pydantic validation issues
@@ -794,7 +934,7 @@ async def match_websocket(
                 in_queue = True
                 
                 async def on_friends_match_found(pending: PendingMatch):
-                    nonlocal current_match_id, in_queue, queue_task
+                    nonlocal current_match_id, in_queue, queue_task, last_sent_char_index
                     
                     logger.info(f"on_friends_match_found called for user {user_id}, match {pending.match_id}")
                     
@@ -862,7 +1002,7 @@ async def match_websocket(
                                 char_index=char_index,
                                 word_index=word_index
                             )
-                            await manager.send_json(user_id, progress_msg.model_dump())
+                            manager.publish_progress(user_id, progress_msg.model_dump())
                         
                         async def on_game_end(result: MatchResult):
                             # Manually construct dict to avoid Pydantic validation issues
@@ -918,9 +1058,6 @@ async def match_websocket(
                 queue_task = asyncio.create_task(send_friends_queue_updates())
             
             elif message_type == "KEYSTROKE":
-                if not current_match_id:
-                    continue
-                
                 char = data.get("char", "")
                 timestamp = data.get("timestamp", 0)
                 char_index = data.get("char_index", 0)
@@ -946,6 +1083,14 @@ async def match_websocket(
                 if not current_match_id:
                     continue
 
+                session = game_service.get_session(current_match_id)
+                if not session:
+                    continue
+                current_player = session.player1 if session.player1.uid == user_id else session.player2
+                event_id = data.get("event_id")
+                if not await _gate_input_event(user_id, current_player, event_id):
+                    continue
+
                 valid = game_service.process_keystroke(
                     current_match_id,
                     user_id,
@@ -953,16 +1098,17 @@ async def match_websocket(
                     timestamp,
                     char_index
                 )
+
+                await _ack_input_event(user_id, current_player, event_id, valid)
                 
-                if not valid:
+                if not valid and event_id is None:
                     error_msg = ErrorMessage(
                         code="INVALID_KEYSTROKE",
                         message="Keystroke rejected by anti-cheat"
                     )
                     await manager.send_json(user_id, error_msg.model_dump())
                 
-                session = game_service.get_session(current_match_id)
-                if session:
+                if session and valid:
                     if session.player1.uid == user_id:
                         opponent = session.player2
                         current_player = session.player1
@@ -972,8 +1118,7 @@ async def match_websocket(
                     
                     should_send = (
                         not opponent.is_bot and
-                        (current_player.current_char_index - last_sent_char_index >= PROGRESS_THROTTLE_CHARS
-                         or char == ' ')
+                        current_player.current_char_index != last_sent_char_index
                     )
                     if should_send:
                         last_sent_char_index = current_player.current_char_index
@@ -981,21 +1126,34 @@ async def match_websocket(
                             char_index=current_player.current_char_index,
                             word_index=current_player.current_word_index
                         )
-                        await manager.send_json(opponent.uid, progress_msg.model_dump())
+                        manager.publish_progress(opponent.uid, progress_msg.model_dump())
             
             elif message_type == "WORD_COMPLETE":
                 if not current_match_id:
                     continue
                 
                 word_index = data.get("word_index", 0)
-                await game_service.process_word_complete(
+                timestamp = data.get("timestamp")
+                if not isinstance(word_index, int) or not isinstance(timestamp, (int, float)) or timestamp <= 0:
+                    continue
+                session = game_service.get_session(current_match_id)
+                if not session:
+                    continue
+                current_player = session.player1 if session.player1.uid == user_id else session.player2
+                event_id = data.get("event_id")
+                if not await _gate_input_event(user_id, current_player, event_id):
+                    continue
+
+                valid = await game_service.process_word_complete(
                     current_match_id,
                     user_id,
-                    word_index
+                    word_index,
+                    timestamp
                 )
+
+                await _ack_input_event(user_id, current_player, event_id, valid)
                 
-                session = game_service.get_session(current_match_id)
-                if session:
+                if session and valid:
                     if session.player1.uid == user_id:
                         opponent = session.player2
                         current_player = session.player1
@@ -1004,11 +1162,12 @@ async def match_websocket(
                         current_player = session.player2
                     
                     if not opponent.is_bot:
+                        last_sent_char_index = current_player.current_char_index
                         progress_msg = OpponentProgressMessage(
                             char_index=current_player.current_char_index,
                             word_index=current_player.current_word_index
                         )
-                        await manager.send_json(opponent.uid, progress_msg.model_dump())
+                        manager.publish_progress(opponent.uid, progress_msg.model_dump())
     
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for user {user_id}")
@@ -1017,16 +1176,15 @@ async def match_websocket(
     finally:
         if queue_task:
             queue_task.cancel()
-        if in_queue:
-            await matchmaking_service.remove_from_queue(user_id)
-            await matchmaking_service.remove_from_training_queue(user_id)
-            await matchmaking_service.remove_from_friends_queue(user_id)
-        if current_match_id:
-            try:
-                await game_service.handle_player_disconnect(current_match_id, user_id)
-            except Exception as e:
-                logger.error(f"Error handling player disconnect: {e}")
-        manager.disconnect(user_id)
-        logger.info(f"Cleaned up connection for user {user_id}")
-        await manager.broadcast_online_count()
-        await manager.broadcast_online_users()
+        replacement = manager.get_connection(user_id)
+        if replacement is None or replacement is websocket:
+            if in_queue:
+                await matchmaking_service.remove_from_queue(user_id)
+                await matchmaking_service.remove_from_training_queue(user_id)
+                await matchmaking_service.remove_from_friends_queue(user_id)
+            manager.disconnect(user_id, websocket)
+            if current_match_id:
+                manager.schedule_forfeit(user_id, current_match_id)
+            logger.info(f"Cleaned up connection for user {user_id}")
+            await manager.broadcast_online_count()
+            await manager.broadcast_online_users()

@@ -42,11 +42,11 @@ interface DailyRewardModalProps {
 const DAILY_REWARDS = [
     { day: 1, coins: 100, type: 'coins', label: '100' },
     { day: 2, coins: 200, type: 'coins', label: '200' },
-    { day: 3, type: 'effect', label: 'Effect' },
+    { day: 3, type: 'effect', label: 'Effect + 50' },
     { day: 4, coins: 300, type: 'coins', label: '300' },
-    { day: 5, type: 'cursor', label: 'Cursor' },
+    { day: 5, type: 'cursor', label: 'Cursor + 100' },
     { day: 6, coins: 400, type: 'coins', label: '400' },
-    { day: 7, type: 'special', label: 'Jackpot' },
+    { day: 7, type: 'special', label: '1,000 + 5 boosts' },
 ]
 
 const RewardIcon = ({ type, size = 32, isActive }: { type: string; size?: number; isActive?: boolean }) => {
@@ -119,6 +119,7 @@ export default function DailyRewardModal({ isOpen, onClose }: DailyRewardModalPr
 
     useEffect(() => {
         if (isOpen && idToken) {
+            setClaimResult(null)
             setIsLoading(true)
             getDailyStatus(idToken)
                 .then(setStatus)
@@ -155,7 +156,7 @@ export default function DailyRewardModal({ isOpen, onClose }: DailyRewardModalPr
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+                    className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 bg-black/80 backdrop-blur-md"
                     onClick={onClose}
                 >
                     <motion.div
@@ -163,7 +164,8 @@ export default function DailyRewardModal({ isOpen, onClose }: DailyRewardModalPr
                         animate={{ scale: 1, opacity: 1, y: 0 }}
                         exit={{ scale: 0.9, opacity: 0, y: 30 }}
                         onClick={(e) => e.stopPropagation()}
-                        className="relative w-full max-w-4xl overflow-hidden rounded-3xl bg-[#0f0f0f] border border-white/10 shadow-2xl"
+                        role="dialog" aria-modal="true" aria-labelledby="daily-rewards-title"
+                        className="relative my-auto w-full max-w-4xl overflow-hidden rounded-3xl bg-[#101116] border border-white/10 shadow-2xl"
                     >
                         {/* Decorative Background Gradients */}
                         <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[100px] pointer-events-none" />
@@ -172,6 +174,7 @@ export default function DailyRewardModal({ isOpen, onClose }: DailyRewardModalPr
                         {/* Close Button */}
                         <button
                             onClick={onClose}
+                            aria-label="Close daily rewards"
                             className="absolute top-4 right-4 z-20 p-2 rounded-full bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-colors"
                         >
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -183,9 +186,9 @@ export default function DailyRewardModal({ isOpen, onClose }: DailyRewardModalPr
 
                             {/* Header */}
                             <div className="text-center mb-8">
-                                <h2 className="text-3xl font-black text-white tracking-tight mb-2">
+                                <h2 id="daily-rewards-title" className="text-3xl font-semibold text-white tracking-tight mb-2">
                                     <span className="bg-clip-text text-transparent bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200">
-                                        Daily Login Rewards
+                                        Your daily rewards
                                     </span>
                                 </h2>
                                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">

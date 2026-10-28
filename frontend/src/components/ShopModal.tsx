@@ -41,7 +41,7 @@
  * types: Shared types like CursorInfo, SpinResult, and helpers like getRarityColor.
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, useAnimation } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import * as Tone from 'tone'
@@ -64,7 +64,7 @@ const ITEMS_BEFORE_WINNER = 60
 const ANIMATION_DURATION = 6
 
 interface SpinItem {
-    type: 'cursor' | 'coins' | 'effect' | 'background' | 'profile_effect' | 'border'
+    type: 'cursor' | 'coins' | 'effect' | 'background' | 'profile_effect' | 'border' | 'nothing' | 'unknown'
     cursor?: CursorInfo
     effect?: EffectInfo
     coins?: number
@@ -162,7 +162,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
     }, [isOpen, onClose, isSpinning])
 
     // Sound Helpers
-    const playTickSound = () => {
+    const playTickSound = useCallback(() => {
         const now = Tone.now()
         if (now - lastTickRef.current < 0.03) return
         lastTickRef.current = now
@@ -174,9 +174,10 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
             envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 }
         }).toDestination()
         synth.triggerAttackRelease("C3", "64n")
-    }
+        window.setTimeout(() => synth.dispose(), 500)
+    }, [])
 
-    const playWinSound = (rarity: string = 'common') => {
+    const playWinSound = useCallback((rarity: string = 'common') => {
         const now = Tone.now()
         const synth = new Tone.PolySynth(Tone.Synth).toDestination()
 
@@ -192,6 +193,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
             sparkle.triggerAttackRelease("A5", now + 0.6)
             sparkle.triggerAttackRelease("C6", now + 0.7)
             sparkle.triggerAttackRelease("E6", now + 0.8)
+            window.setTimeout(() => sparkle.dispose(), 2500)
         } else if (rarity === 'legendary' || rarity === 'ultra') {
             synth.volume.value = -5
             synth.triggerAttackRelease(["D4", "F#4", "A4", "D5"], "8n", now)
@@ -205,10 +207,12 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
             synth.volume.value = -10
             synth.triggerAttackRelease(["C4", "E4", "G4"], "4n", now)
         }
-    }
+        window.setTimeout(() => synth.dispose(), 3000)
+    }, [])
 
     // Handle Animation Phase
     useEffect(() => {
+        let cancelled = false
         if (phase === 'rolling') {
             const animate = async () => {
                 // Allow a frame for the ROLLING view to render so containerRef is valid
@@ -219,6 +223,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                         })
                     })
                 })
+                if (cancelled) return
 
                 // Reset controller
                 await controls.set({ x: 0 })
@@ -250,6 +255,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                         ease: [0.15, 0.85, 0.35, 1.0]
                     }
                 })
+                if (cancelled) return
 
                 // Animation Complete
                 if (tickIntervalRef.current) clearTimeout(tickIntervalRef.current)
@@ -279,6 +285,10 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                 }
             }
             animate()
+        }
+        return () => {
+            cancelled = true
+            if (tickIntervalRef.current) clearTimeout(tickIntervalRef.current)
         }
     }, [phase, controls, displayItems, activeRollType, idToken, fetchInventory, fetchProfileInventory, playTickSound, playWinSound, containerRef])
 
@@ -323,12 +333,12 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
             let winningItem: SpinItem | undefined
 
             if (result.type === 'cursor' && result.cursorId) {
-                const cursorInfo = CURSORS[result.cursorId]
+                const cursorInfo = result.cursorInfo || CURSORS[result.cursorId]
                 if (cursorInfo) {
                     winningItem = { type: 'cursor', cursor: cursorInfo, id: `winner-${Date.now()}` }
                 }
             } else if (result.type === 'effect' && result.effectId) {
-                const effectInfo = EFFECTS[result.effectId]
+                const effectInfo = result.effectInfo || EFFECTS[result.effectId]
                 if (effectInfo) {
                     winningItem = { type: 'effect', effect: effectInfo, id: `winner-${Date.now()}` }
                 }
@@ -337,12 +347,12 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
             } else if (result.type === 'coins' && result.coinsWon === 10) {
                 winningItem = { type: 'coins', coins: 10, id: `winner-${Date.now()}` }
             } else if (result.type === 'nothing') {
-                winningItem = { type: 'coins', coins: 0, id: `winner-nothing-${Date.now()}` }
+                winningItem = { type: 'nothing', id: `winner-nothing-${Date.now()}` }
             }
 
             // Fallback
             if (!winningItem) {
-                winningItem = { ...baseItems[0], id: `winner-fallback-${Date.now()}` }
+                winningItem = { type: 'unknown', id: `winner-fallback-${Date.now()}` }
             }
 
             // THIRD: Generate items with the winner ALREADY in place at position ITEMS_BEFORE_WINNER
@@ -393,28 +403,26 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
             let winningItem: SpinItem | undefined
 
             if (result.type === 'background' && result.itemId) {
-                const bgInfo = PROFILE_BACKGROUNDS[result.itemId as keyof typeof PROFILE_BACKGROUNDS]
+                const bgInfo = result.backgroundInfo || PROFILE_BACKGROUNDS[result.itemId as keyof typeof PROFILE_BACKGROUNDS]
                 if (bgInfo) {
                     winningItem = { type: 'background', background: bgInfo, id: `profile-winner-${Date.now()}` }
                 }
             } else if (result.type === 'profile_effect' && result.itemId) {
-                const effectInfo = PROFILE_EFFECTS_DATA[result.itemId]
+                const effectInfo = result.effectInfo || PROFILE_EFFECTS_DATA[result.itemId]
                 if (effectInfo) {
                     winningItem = { type: 'profile_effect', profileEffect: effectInfo, id: `profile-winner-${Date.now()}` }
                 }
             } else if (result.type === 'border' && result.itemId) {
-                const borderInfo = PROFILE_BORDERS[result.itemId]
+                const borderInfo = result.borderInfo || PROFILE_BORDERS[result.itemId]
                 if (borderInfo) {
                     winningItem = { type: 'border', border: borderInfo, id: `profile-winner-${Date.now()}` }
                 }
             } else if (result.type === 'nothing') {
-                if (profileBaseItems.length > 0) {
-                    winningItem = { ...profileBaseItems[0], id: `profile-nothing-${Date.now()}` }
-                }
+                winningItem = { type: 'nothing', id: `profile-nothing-${Date.now()}` }
             }
 
-            if (!winningItem && profileBaseItems.length > 0) {
-                winningItem = { ...profileBaseItems[0], id: `profile-fallback-${Date.now()}` }
+            if (!winningItem) {
+                winningItem = { type: 'unknown', id: `profile-fallback-${Date.now()}` }
             }
 
             if (!winningItem) throw new Error("No winning item found")
@@ -479,15 +487,16 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                         animate={{ scale: 1, opacity: 1 }}
                         exit={{ scale: 0.95, opacity: 0 }}
                         onClick={(e) => e.stopPropagation()}
-                        className="relative w-full max-w-2xl overflow-hidden rounded-2xl bg-[#0a0a0a] border border-white/10"
+                        role="dialog" aria-modal="true" aria-label="Cosmetic shop"
+                        className="relative w-full max-w-2xl overflow-hidden rounded-3xl bg-[#111218] border border-white/10 shadow-[0_28px_100px_rgba(0,0,0,0.65)]"
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/10 bg-[#0f0f0f]">
+                        <div className="flex items-center justify-between px-5 md:px-7 py-4 md:py-5 border-b border-white/[0.07] bg-white/[0.02]">
                             <div className="flex items-center gap-2 md:gap-3">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-purple-400 md:w-6 md:h-6">
                                     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
                                 </svg>
-                                <h2 className="text-base md:text-lg font-bold text-white">Crates</h2>
+                                <h2 className="text-base md:text-lg font-semibold tracking-tight text-white">The crate shop</h2>
                                 {/* OPENED counter - desktop only, inline with title */}
                                 <span className="hidden md:inline text-[10px] text-white/40 font-mono ml-2">
                                     OPENED: <span className="text-white/80">{cratesOpened}</span>
@@ -793,7 +802,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                         {showDropRates ? 'Crate Probabilities' : 'Profile Kit Odds'}
                                                     </h4>
                                                     <p className="text-xs text-white/40 mt-1">
-                                                        Fair play certified. Pity system guarantees rare items over time.
+                                                        Selected base outcome weights. Actual odds are normalized and change with luck boosts and your collection; boosts do not guarantee an item.
                                                     </p>
                                                 </div>
                                                 <button
@@ -808,7 +817,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
 
                                             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                                                 {(showDropRates ? [
-                                                    { label: 'Better Luck Next Time', rate: '60%', color: '#ef4444' },
+                                                    { label: 'Better Luck Next Time', rate: '25%', color: '#ef4444' },
                                                     { label: 'Common Item', rate: '20%', color: getRarityColor('common') },
                                                     { label: 'Common Effect', rate: '8%', color: getRarityColor('common') },
                                                     { label: 'Uncommon Item', rate: '5%', color: getRarityColor('uncommon') },
@@ -817,9 +826,9 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                     { label: 'Legendary', rate: '1%', color: getRarityColor('legendary') },
                                                     { label: 'Ultra', rate: '0.5%', color: getRarityColor('ultra') },
                                                     { label: 'Divine', rate: '0.15%', color: getRarityColor('divine') },
-                                                    { label: 'Myhtical', rate: '0.001%', color: getRarityColor('mythical') },
+                                                    { label: 'Mythical', rate: '0.001%', color: getRarityColor('mythical') },
                                                 ] : [
-                                                    { label: 'Better Luck Next Time', rate: '65%', color: '#ef4444' },
+                                                    { label: 'Better Luck Next Time', rate: '25%', color: '#ef4444' },
                                                     { label: 'Common Background', rate: '10%', color: getRarityColor('common') },
                                                     { label: 'Common Effect', rate: '12%', color: getRarityColor('common') },
                                                     { label: 'Common Border', rate: '8%', color: getRarityColor('common') },
@@ -831,7 +840,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                 ]).map((item, i) => (
                                                     <div key={i} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                                                         <span className="text-sm font-medium" style={{ color: item.color }}>{item.label}</span>
-                                                        <span className="font-mono text-sm text-white/50">{item.rate}</span>
+                                                        <span className="font-mono text-sm text-white/50">{item.rate.replace('%', '')} weight</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -937,10 +946,15 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                                     {item.border.rarity}
                                                                 </span>
                                                             </>
-                                                        ) : (
+                                                        ) : item.type === 'coins' ? (
                                                             <>
                                                                 <CoinIcon size={40} />
                                                                 <span className="text-[10px] text-yellow-400 font-bold mt-1">+{item.coins}</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/5 text-lg text-white/50">—</span>
+                                                                <span className="mt-1 text-center text-[10px] text-white/60">{item.type === 'nothing' ? 'No reward' : 'See result'}</span>
                                                             </>
                                                         )}
                                                     </div>
@@ -958,13 +972,13 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                 <div className="relative">
                                     {/* Rarity-colored header bar */}
                                     <div
-                                        className="py-3 text-center font-bold text-white"
+                                        className="border-b border-white/10 py-3 text-center text-xs font-semibold uppercase tracking-[0.18em] text-white"
                                         style={{
-                                            backgroundColor: getRarityColor(
+                                            background: `linear-gradient(90deg, transparent, ${getRarityColor(
                                                 activeRollType === 'cursor'
                                                     ? getItemRarity()
                                                     : (profileSpinResult?.backgroundInfo?.rarity || profileSpinResult?.effectInfo?.rarity || profileSpinResult?.borderInfo?.rarity || 'common')
-                                            )
+                                            )}55, transparent)`
                                         }}
                                     >
                                         {activeRollType === 'cursor' ? (

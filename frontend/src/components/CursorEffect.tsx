@@ -68,12 +68,17 @@ export default function CursorEffect({ effectId }: CursorEffectProps) {
     const mousePos = useRef({ x: 0, y: 0 })
     const lastMousePos = useRef({ x: 0, y: 0 })
     const lastSpawnTime = useRef(0)
+    const hasPointerPosition = useRef(false)
     const reqRef = useRef<number>()
 
     // Track mouse globally
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
             mousePos.current = { x: e.clientX, y: e.clientY }
+            if (!hasPointerPosition.current) {
+                lastMousePos.current = mousePos.current
+                hasPointerPosition.current = true
+            }
         }
         window.addEventListener('mousemove', handleMouseMove, { passive: true })
         return () => window.removeEventListener('mousemove', handleMouseMove)
@@ -104,12 +109,14 @@ export default function CursorEffect({ effectId }: CursorEffectProps) {
                 // Increased spawn count for denser trails
                 const spawnCount = Math.min(Math.ceil(speed / 3), 12) // Increased max from 8
                 for (let i = 0; i < spawnCount; i++) {
-                    newParticles.push(createParticle(effectId, mousePos.current.x, mousePos.current.y, dx, dy))
+                    const progress = (i + 1) / spawnCount
+                    newParticles.push(createParticle(effectId, lastMousePos.current.x + dx * progress, lastMousePos.current.y + dy * progress, dx, dy))
                 }
             }
 
             // Update existing particles
             setParticles(prev => {
+                if (prev.length === 0 && newParticles.length === 0) return prev
                 const next = [...prev, ...newParticles].map(p => updateParticle(p, effectId))
                 return next.filter(p => p.life > 0).slice(-MAX_PARTICLES)
             })

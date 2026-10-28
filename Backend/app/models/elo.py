@@ -173,7 +173,7 @@ class EloCalculator:
         Args:
             player_rating: Player's current rating
             opponent_rating: Opponent's current rating  
-            player_score: Player's score (WPM * Accuracy)
+            player_score: Player's authoritative final-text score
             opponent_score: Opponent's score
             player_games_played: Number of games player has played (for placement bonus)
             opponent_games_played: Number of games opponent has played

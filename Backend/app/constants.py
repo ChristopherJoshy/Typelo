@@ -196,7 +196,7 @@ EFFECTS = {
 # Gacha Weights - CHALLENGING Drop Rates (harder grind)
 # 40% chance to get something, makes rare items truly rare
 GACHA_WEIGHTS = {
-    "better_luck_next_time": 60,   # 60% - No reward (challenging!)
+    "better_luck_next_time": 25,   # Outcome weights are normalized by the draw.
     "common": 20,                    # 20% - Common cursor
     "common_effect": 8,              # 8% - Common effect
     "uncommon": 5,                   # 5% - Uncommon cursor
@@ -215,7 +215,7 @@ GACHA_WEIGHTS = {
 }
 
 LUCK_BOOST_WEIGHTS = {
-    "better_luck_next_time": 35,   # 35% - Still challenging even with boost
+    "better_luck_next_time": 10,
     "common": 28,                   # 28%
     "common_effect": 12,            # 12%
     "uncommon": 8,                  # 8%
@@ -420,7 +420,7 @@ PROFILE_BORDERS = {
 # Profile Gacha Weights - CHALLENGING (harder grind)
 # 35% chance to get something, makes profile items truly rare
 PROFILE_GACHA_WEIGHTS = {
-    "better_luck_next_time": 65,   # 65% - No reward (challenging!)
+    "better_luck_next_time": 25,
     "common_bg": 10,               # 10% - Common background
     "common_effect": 12,           # 12% - Common profile effect
     "common_border": 8,            # 8% - Common border
@@ -446,7 +446,7 @@ PROFILE_GACHA_WEIGHTS = {
 PROFILE_PITY_STREAK_THRESHOLD = 7  # Need 7 bad rolls to trigger luck boost (was 3)
 
 PROFILE_LUCK_BOOST_WEIGHTS = {
-    "better_luck_next_time": 40,  # 40% - Still challenging even with boost
+    "better_luck_next_time": 10,
     "common_bg": 15,              # 15%
     "common_effect": 18,          # 18%
     "common_border": 12,          # 12%

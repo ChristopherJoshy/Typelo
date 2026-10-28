@@ -54,186 +54,54 @@ export default function Login() {
 
   return (
     <>
-      <SEOHead
-        title="Sign In"
-        description="Sign in to Typelo, the real-time 1v1 competitive typing game. Battle opponents, climb ELO rankings, and prove your typing skills."
-        path="/"
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
-      />
-
-      <div className="min-h-screen w-full flex items-center justify-center bg-black p-4 sm:p-6">
-        {/* Main Card */}
-        <div className="w-full max-w-md">
-          {/* Logo & Brand */}
-          <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 mb-6">
-              <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M13 3L4 14h7l-2 7 9-11h-7l2-7z" />
-              </svg>
-            </div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight mb-2">
-              Typelo
-            </h1>
-            <p className="text-neutral-400 text-sm sm:text-base">
-              1v1 Competitive Typing
-            </p>
-          </div>
-
-          {/* Card Container */}
-          <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6 sm:p-8 backdrop-blur-sm">
-
-            {!showGuestMode ? (
-              /* Main Auth Options */
-              <div className="space-y-4">
-                {/* Google Sign In */}
-                <button
-                  onClick={signInWithGoogle}
-                  disabled={loading}
-                  className="w-full flex items-center justify-center gap-3 
-                           px-6 py-4 rounded-xl
-                           bg-white text-neutral-900 font-medium
-                           hover:bg-neutral-100 
-                           active:scale-[0.99]
-                           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-black
-                           disabled:opacity-50 disabled:cursor-not-allowed
-                           transition-colors"
-                >
-                  <GoogleIcon className="w-5 h-5" />
-                  <span>Continue with Google</span>
-                </button>
-
-                {/* Divider */}
-                <div className="flex items-center gap-4 py-2">
-                  <div className="flex-1 h-px bg-neutral-800" />
-                  <span className="text-neutral-500 text-xs uppercase tracking-wider">or</span>
-                  <div className="flex-1 h-px bg-neutral-800" />
+      <SEOHead title="Sign In" description="Play real-time 1v1 typing matches on Typelo." path="/" />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
+      <main className="relative min-h-screen overflow-hidden bg-[#08090d] text-white">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_15%_15%,rgba(244,63,94,0.12),transparent_38%),radial-gradient(ellipse_at_85%_85%,rgba(99,102,241,0.10),transparent_40%)]" />
+        <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-6 sm:px-10">
+          <header className="flex h-20 items-center justify-between border-b border-white/[0.07]">
+            <a href="/" aria-label="Typelo home" className="flex items-center gap-3 font-bold tracking-tight">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-rose-500 text-lg shadow-[0_0_24px_rgba(244,63,94,0.25)]">ϟ</span>
+              <span className="text-xl">typelo<span className="text-rose-400">.</span></span>
+            </a>
+            <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/35 sm:text-xs">Type fast. Play fair.</span>
+          </header>
+          <div className="grid flex-1 items-center gap-12 py-12 lg:grid-cols-[1fr_420px] lg:gap-20 lg:py-20">
+            <section className="max-w-xl">
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-rose-400/20 bg-rose-400/[0.07] px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-rose-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Real-time typing duels
+              </div>
+              <h1 className="text-5xl font-semibold leading-[1.04] tracking-[-0.055em] sm:text-6xl lg:text-7xl">Every keystroke<br /><span className="text-white/35">counts.</span></h1>
+              <p className="mt-6 max-w-md text-base leading-7 text-white/55 sm:text-lg">Challenge an opponent, find your rhythm, and climb the ranks one word at a time.</p>
+              <div aria-hidden="true" className="mt-10 hidden max-w-lg rounded-2xl border border-white/[0.08] bg-white/[0.025] p-5 sm:block">
+                <div className="mb-4 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.2em] text-white/35"><span>Find your flow</span><span>01 / 01</span></div>
+                <p className="font-mono text-lg leading-relaxed tracking-tight text-white/35"><span className="text-rose-300">speed is built</span><span className="border-l-2 border-rose-400 pl-1 text-white/80"> one word</span> at a time.</p>
+              </div>
+            </section>
+            <section aria-labelledby="signin-heading" className="w-full rounded-[28px] border border-white/10 bg-[#111218]/95 p-6 shadow-[0_28px_90px_rgba(0,0,0,0.45)] sm:p-8">
+              <div className="mb-8"><p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-rose-300">Your next match awaits</p><h2 id="signin-heading" className="text-2xl font-semibold tracking-tight">{showGuestMode ? (isNewGuest ? 'Create your account' : 'Welcome back') : 'Ready to play?'}</h2><p className="mt-2 text-sm leading-6 text-white/50">{showGuestMode ? 'Your guest account keeps your progress.' : 'Sign in and get straight to the starting line.'}</p></div>
+              {!showGuestMode ? (
+                <div className="space-y-3">
+                  <button type="button" onClick={signInWithGoogle} disabled={loading} className="flex w-full items-center justify-center gap-3 rounded-xl bg-white px-5 py-4 text-sm font-semibold text-neutral-900 transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"><GoogleIcon className="h-5 w-5" /> Continue with Google</button>
+                  <div className="flex items-center gap-3 py-2 text-[10px] uppercase tracking-[0.2em] text-white/30"><span className="h-px flex-1 bg-white/10" />or<span className="h-px flex-1 bg-white/10" /></div>
+                  <button type="button" onClick={() => setShowGuestMode(true)} disabled={loading} className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-4 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/[0.08] disabled:opacity-50"><span aria-hidden="true" className="text-white/45">↗</span> Play as guest</button>
                 </div>
-
-                {/* Guest Mode Button */}
-                <button
-                  onClick={() => setShowGuestMode(true)}
-                  disabled={loading}
-                  className="w-full flex items-center justify-center gap-3 
-                           px-6 py-4 rounded-xl
-                           bg-neutral-800 border border-neutral-700 
-                           text-white font-medium
-                           hover:bg-neutral-750 hover:border-neutral-600
-                           active:scale-[0.99]
-                           focus:outline-none focus:ring-2 focus:ring-neutral-500 focus:ring-offset-2 focus:ring-offset-black
-                           disabled:opacity-50 disabled:cursor-not-allowed
-                           transition-colors"
-                >
-                  <svg className="w-5 h-5 text-neutral-400" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z" />
-                  </svg>
-                  <span>Play as Guest</span>
-                </button>
-              </div>
-            ) : (
-              /* Guest Form */
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-white text-center mb-6">
-                  {isNewGuest ? 'Create Guest Account' : 'Guest Login'}
-                </h2>
-
-                {/* Username */}
-                <input
-                  type="text"
-                  placeholder="Username"
-                  value={guestUsername}
-                  onChange={(e) => setGuestUsername(e.target.value)}
-                  className="w-full px-4 py-3.5 rounded-xl
-                           bg-neutral-800 border border-neutral-700
-                           text-white placeholder-neutral-500
-                           focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500
-                           transition-colors"
-                  maxLength={20}
-                />
-
-                {/* Password */}
-                <input
-                  type="password"
-                  placeholder="Password"
-                  value={guestPassword}
-                  onChange={(e) => setGuestPassword(e.target.value)}
-                  className="w-full px-4 py-3.5 rounded-xl
-                           bg-neutral-800 border border-neutral-700
-                           text-white placeholder-neutral-500
-                           focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500
-                           transition-colors"
-                  maxLength={50}
-                />
-
-                {/* Submit Button */}
-                <button
-                  onClick={handleGuestSubmit}
-                  disabled={loading || !guestUsername || !guestPassword}
-                  className="w-full px-6 py-4 rounded-xl
-                           bg-primary-500 text-white font-medium
-                           hover:bg-primary-600
-                           active:scale-[0.99]
-                           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-black
-                           disabled:opacity-50 disabled:cursor-not-allowed
-                           transition-colors"
-                >
-                  {loading ? 'Please wait...' : (isNewGuest ? 'Create Account' : 'Login')}
-                </button>
-
-                {/* Toggle */}
-                <p
-                  onClick={() => setIsNewGuest(!isNewGuest)}
-                  className="text-neutral-400 text-sm text-center cursor-pointer hover:text-white transition-colors"
-                >
-                  {isNewGuest ? 'Already have an account? Login' : 'New here? Create an account'}
-                </p>
-
-                {/* Back Button */}
-                <button
-                  onClick={() => {
-                    setShowGuestMode(false)
-                    setGuestError('')
-                  }}
-                  className="w-full text-neutral-500 text-sm hover:text-white transition-colors pt-2"
-                >
-                  ← Back to sign in options
-                </button>
-
-              </div>
-            )}
-
-            {/* Error Message */}
-            {(error || guestError) && (
-              <div className="mt-4 p-4 bg-red-950/30 border border-red-900/50 rounded-xl">
-                <p className="text-red-400 text-sm text-center">
-                  {error || guestError}
-                </p>
-              </div>
-            )}
+              ) : (
+                <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void handleGuestSubmit() }}>
+                  <label className="block text-xs font-medium text-white/60">Username<input autoComplete="username" type="text" value={guestUsername} onChange={e => setGuestUsername(e.target.value)} maxLength={20} className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white placeholder:text-white/25 focus:border-rose-400" placeholder="Choose a username" /></label>
+                  <label className="block text-xs font-medium text-white/60">Password<input autoComplete={isNewGuest ? 'new-password' : 'current-password'} type="password" value={guestPassword} onChange={e => setGuestPassword(e.target.value)} maxLength={50} className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white placeholder:text-white/25 focus:border-rose-400" placeholder="At least 6 characters" /></label>
+                  <button type="submit" disabled={loading || !guestUsername || !guestPassword} className="w-full rounded-xl bg-rose-500 px-5 py-4 text-sm font-semibold text-white transition hover:bg-rose-400 disabled:opacity-50">{loading ? 'Please wait…' : (isNewGuest ? 'Create account' : 'Sign in')}</button>
+                  <button type="button" onClick={() => { setIsNewGuest(!isNewGuest); setGuestError('') }} className="w-full py-1 text-center text-sm text-white/55 transition hover:text-white">{isNewGuest ? 'Already have an account? Sign in' : 'New here? Create an account'}</button>
+                  <button type="button" onClick={() => { setShowGuestMode(false); setGuestError('') }} className="w-full py-1 text-center text-xs text-white/40 transition hover:text-white">← Back to sign in options</button>
+                </form>
+              )}
+              {(error || guestError) && <p role="alert" className="mt-5 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-300">{error || guestError}</p>}
+              <p className="mt-7 border-t border-white/[0.07] pt-5 text-center text-xs leading-5 text-white/35">A little competition. A lot of progress.</p>
+            </section>
           </div>
-
-          {/* Footer */}
-          <div className="text-center mt-8 space-y-2">
-            <p className="text-neutral-600 text-xs">
-              Real-time 1v1 competitive typing game
-            </p>
-            <div className="flex items-center justify-center gap-2 text-neutral-500 text-xs">
-              <span>made by chris</span>
-              <span>•</span>
-              <a
-                href="https://github.com/christopherjoshy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-white transition-colors"
-              >
-                github
-              </a>
-            </div>
-          </div>
+          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] py-6 text-xs text-white/35"><span>Built for the love of typing.</span><a href="https://github.com/christopherjoshy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Made by Chris ↗</a></footer>
         </div>
-      </div>
+      </main>
     </>
   )
 }

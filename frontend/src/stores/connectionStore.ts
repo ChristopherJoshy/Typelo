@@ -49,6 +49,8 @@ interface ConnectionState {
 }
 
 let healthCheckInterval: ReturnType<typeof setInterval> | null = null
+let pendingCheck: Promise<boolean> | null = null
+const DISCONNECT_AFTER_FAILURES = 3
 
 export const useConnectionStore = create<ConnectionState>((set, get) => ({
   status: 'checking',
@@ -56,15 +58,23 @@ export const useConnectionStore = create<ConnectionState>((set, get) => ({
   retryCount: 0,
 
   checkConnection: async () => {
-    const isConnected = await checkBackendHealth()
-
-    set({
-      status: isConnected ? 'connected' : 'disconnected',
-      lastCheck: new Date(),
-      retryCount: isConnected ? 0 : get().retryCount + 1,
-    })
-
-    return isConnected
+    if (pendingCheck) return pendingCheck
+    pendingCheck = (async () => {
+      const isConnected = await checkBackendHealth()
+      const previous = get()
+      const retryCount = isConnected ? 0 : previous.retryCount + 1
+      set({
+        status: isConnected ? 'connected' : previous.status === 'connected' && retryCount < DISCONNECT_AFTER_FAILURES ? 'connected' : 'disconnected',
+        lastCheck: new Date(),
+        retryCount,
+      })
+      return isConnected
+    })()
+    try {
+      return await pendingCheck
+    } finally {
+      pendingCheck = null
+    }
   },
 
   startHealthCheck: () => {

@@ -50,6 +50,7 @@ import { create } from 'zustand'
 import type { GameState, MatchInfo, MatchResult } from '../types'
 
 interface GameStore extends GameState {
+  matchDuration: number
   // Actions
   reset: () => void
   joinQueue: () => void
@@ -95,6 +96,7 @@ const initialState: GameState = {
 
 export const useGameStore = create<GameStore>((set) => ({
   ...initialState,
+  matchDuration: 30,
 
   recordKeyStats: (char, correct) => set((state) => {
     const key = char.toLowerCase()
@@ -110,7 +112,7 @@ export const useGameStore = create<GameStore>((set) => ({
     }
   }),
 
-  reset: () => set(initialState),
+  reset: () => set({ ...initialState, matchDuration: 30 }),
 
   joinQueue: () => set({
     status: 'queue',
@@ -159,15 +161,20 @@ export const useGameStore = create<GameStore>((set) => ({
     accuracy: 100,
     opponentCharIndex: 0,
     opponentWordIndex: 0,
+    startTime: null,
   }),
 
   startCountdown: () => set({ status: 'waiting' }),  // Changed to waiting
 
-  startGame: (duration: number, startTime: number) => set({
-    status: 'waiting', // Wait for countdown in Game.tsx
-    timeRemaining: duration,
-    countdown: 0,
-    startTime: startTime,
+  startGame: (duration: number, startTime: number) => set((state) => {
+    const resumingSameMatch = state.status === 'playing' && state.startTime === startTime
+    return {
+      status: resumingSameMatch ? 'playing' : 'waiting', // New starts run through the countdown; reconnects keep the live game visible.
+      timeRemaining: resumingSameMatch ? state.timeRemaining : duration,
+      matchDuration: duration,
+      countdown: 0,
+      startTime,
+    }
   }),
 
   updateTimeRemaining: (time: number) => set({

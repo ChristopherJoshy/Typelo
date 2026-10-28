@@ -35,7 +35,7 @@
 # app.config.get_settings: App settings.
 
 import statistics
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 from app.config import get_settings
@@ -201,17 +201,18 @@ class AntiCheatService:
     ) -> float:
         """
         Calculate standardized score (Net WPM).
-        Net WPM = ((Chars - Errors) / 5) / Minutes
-        
-        This is the industry standard competitive typing metric (MonkeyType, etc).
+
+        `chars_typed` is the number of correct final characters. In normal
+        matches, incorrect positions score zero; corrected typos remain in the
+        separate accuracy stat instead of being deducted again from score.
         """
         if duration_seconds <= 0:
             return 0.0
             
         minutes = duration_seconds / 60
         
-        # Net Words = (Chars - Errors) / 5
-        # We subtract errors to penalize mistakes
+        # Fallback callers can supply errors when final-position data is not
+        # available. Normal matches pass zero and score correct final text.
         net_words = max(0, (chars_typed - errors) / 5)
         
         net_wpm = net_words / minutes
@@ -225,11 +226,13 @@ class AntiCheatService:
         duration_seconds: int,
         words_completed: int = 0,
         chars_typed: int = 0,
-        errors: int = 0
+        errors: int = 0,
+        final_char_index: Optional[int] = None,
+        final_characters: Optional[Dict[int, str]] = None,
     ) -> Tuple[float, float, float]:
         """
         Calculate player's Net WPM, accuracy, and score.
-        Score prioritizes words completed, then speed.
+        Net WPM ranks the final accepted text; accuracy records all attempts.
         
         If keystrokes list is empty but chars_typed > 0, use fallback calculation.
         """
@@ -240,30 +243,27 @@ class AntiCheatService:
             # Fallback: Use chars_typed and errors if provided (for cases where keystroke tracking failed)
             if chars_typed > 0:
                 accuracy_percent = ((chars_typed - errors) / max(1, chars_typed)) * 100
-                gross_wpm = (chars_typed / 5) / minutes
                 net_wpm = self.calculate_score(chars_typed, errors, time_seconds)
-                wpm_score = net_wpm * 10
-                progress_bonus = words_completed * 5
-                accuracy_multiplier = accuracy_percent / 100
-                score = (wpm_score + progress_bonus) * accuracy_multiplier
-                return round(gross_wpm, 1), round(accuracy_percent, 1), round(score, 1)
+                return round(net_wpm, 1), round(accuracy_percent, 1), round(net_wpm, 1) * 100
             # No keystrokes and no chars_typed - return 0
             return 0.0, 0.0, 0.0
         
         total_chars = len(expected_text)
-        total_keystrokes = len(keystrokes)
-        
-        # Count correct characters
-        # Reset errors and correct_chars for keystroke-based calculation
-        errors = 0 
-        correct_chars = 0
-        
+        errors = 0
+        correct_attempts = 0
+        latest_characters = {} if final_characters is None else final_characters
         for ks in keystrokes:
-            if ks.char_index < total_chars:
-                if ks.char == expected_text[ks.char_index]:
-                    correct_chars += 1
-                else:
-                    errors += 1
+            if 0 <= ks.char_index < total_chars and ks.char == expected_text[ks.char_index]:
+                correct_attempts += 1
+            else:
+                errors += 1
+            if final_characters is None and (final_char_index is None or ks.char_index < final_char_index):
+                latest_characters[ks.char_index] = ks.char
+
+        correct_chars = sum(
+            1 for index, char in latest_characters.items()
+            if 0 <= index < total_chars and char == expected_text[index]
+        )
         
         # Calculate typing duration - use actual game duration to prevent burst typing exploitation
         # Previously used keystroke timestamps which allowed winning by typing 1 word fast and stopping
@@ -273,30 +273,16 @@ class AntiCheatService:
         
         # Accuracy - based on typed attempts (correct + errors), not total keystrokes
         # This ensures backspace corrections don't unfairly lower accuracy
-        typed_attempts = correct_chars + errors
-        accuracy_percent = (correct_chars / max(1, typed_attempts)) * 100
+        typed_attempts = correct_attempts + errors
+        accuracy_percent = (correct_attempts / max(1, typed_attempts)) * 100
         
-        # Gross WPM - uses CORRECT characters only to prevent inflation from key spamming
-        gross_wpm = (correct_chars / 5) / minutes
+        # Rank by correct characters in the final text. Wrong positions score
+        # zero, while corrected typos only affect accuracy and elapsed time.
+        net_wpm = self.calculate_score(correct_chars, 0, time_seconds)
         
-        # Net WPM - uses correct_chars to properly reward accuracy + speed
-        # Previously used len(keystrokes) which penalized corrections unfairly
-        net_wpm = self.calculate_score(correct_chars, errors, time_seconds)
-        
-        # SCORE: Improved Competitive Formula
-        # Source: design_scoring_elo.md
-        # 1. Net WPM is the primary driver (Speed - Errors)
-        # 2. Accuracy is additive, not multiplicative (preserves speed advantage)
-        # 3. Progress bonus breaks ties for identical speed/accuracy
-        
-        # Formula: (NetWPM * 100) + (Accuracy_Percent * 10) + (WordsCompleted * 5)
-        wpm_score = net_wpm * 100
-        accuracy_score = accuracy_percent * 10
-        progress_score = words_completed * 5
-        
-        score = wpm_score + accuracy_score + progress_score
-        
-        return round(gross_wpm, 1), accuracy_percent, round(score, 1)
+        # Rank by the same net speed displayed to players; accuracy remains a
+        # separate diagnostic and does not silently overturn a faster score.
+        return round(net_wpm, 1), accuracy_percent, round(net_wpm, 1) * 100
 
 
 # Singleton instance

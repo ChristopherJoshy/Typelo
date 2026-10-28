@@ -155,7 +155,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="w-full h-full max-w-5xl mx-auto px-4 py-6 md:py-12 flex flex-col justify-center overflow-y-auto relative"
+      className="relative mx-auto flex min-h-full w-full max-w-5xl flex-col justify-center px-5 py-10 md:py-16"
     >
       {/* Minimal edge color bleed - subtle gradient from edges */}
       <div className="fixed inset-0 pointer-events-none z-0">
@@ -186,14 +186,14 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
       {/* Result Header - Minimal Clean Design - No Glows */}
       <motion.div
         variants={itemVariants}
-        className="text-center mb-12 relative z-10"
+        className="relative z-10 mb-10 text-center md:mb-12"
       >
         {/* Small status text */}
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.1 }}
-          className="text-[10px] font-medium tracking-[0.3em] uppercase text-white/30 mb-6"
+          className="mb-4 font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-white/45"
         >
           {isTraining ? 'Training Complete' : 'Match Complete'}
         </motion.p>
@@ -203,10 +203,10 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.2 }}
-          className="text-6xl md:text-8xl font-thin tracking-tighter"
+          className="text-5xl font-semibold tracking-[-0.05em] md:text-7xl"
           style={{ color: isWin ? '#4ade80' : isTie ? '#9ca3af' : '#f87171' }}
         >
-          {isWin ? 'VICTORY' : isTie ? 'DRAW' : 'DEFEAT'}
+          {isWin ? 'Victory.' : isTie ? 'A close draw.' : 'Match complete.'}
         </motion.h2>
 
         {/* Your Elo Change - Minimal */}
@@ -369,7 +369,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
             <div className="border-t border-white/5 border-b border-white/5 divide-y divide-white/5">
               {/* Rows */}
               {[
-                { label: 'WPM', p1: Math.round(result.yourWpm), p2: Math.round(result.opponentWpm) },
+                { label: 'Net WPM', p1: result.yourWpm, p2: result.opponentWpm },
                 { label: 'Accuracy', p1: Math.round(result.yourAccuracy) + '%', p2: Math.round(result.opponentAccuracy) + '%' },
                 { label: 'Score', p1: Math.round(result.yourScore), p2: Math.round(result.opponentScore) }
               ].map((row, i) => (
@@ -424,7 +424,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
 
             {/* Mobile Stats */}
             <div className="space-y-2">
-              <MobileStatsRow label="WPM" p1={Math.round(result.yourWpm)} p2={Math.round(result.opponentWpm)} />
+              <MobileStatsRow label="NET WPM" p1={result.yourWpm} p2={result.opponentWpm} />
               <MobileStatsRow label="ACC" p1={Math.round(result.yourAccuracy) + '%'} p2={Math.round(result.opponentAccuracy) + '%'} />
               <MobileStatsRow label="SCORE" p1={Math.round(result.yourScore)} p2={Math.round(result.opponentScore)} />
             </div>
