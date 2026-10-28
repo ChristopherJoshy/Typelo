@@ -649,7 +649,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     })
   }, [sendGameEvent, timeOffset])
 
-  // Automatically connect when authenticated - only depends on user and idToken presence
+  // Connect when auth becomes available, but don't recycle a live socket each
+  // time Firebase rotates an otherwise valid ID token.
   useEffect(() => {
     const currentUid = user?.uid ?? null
     if (currentUid !== gameEventOwnerRef.current) {
@@ -678,8 +679,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       disconnect()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    // Only reconnect when user ID or token changes, not on stats changes
-  }, [user?.uid, idToken])
+    // The token only gates initial auth. Its value can rotate without the
+    // authenticated user changing, and the active socket remains authorized.
+  }, [user?.uid, Boolean(idToken)])
 
   return (
     <WebSocketContext.Provider value={{

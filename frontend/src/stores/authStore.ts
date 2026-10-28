@@ -490,8 +490,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const currentUser = auth.currentUser
       if (!currentUser) return null
 
-      const freshToken = await currentUser.getIdToken(true)
-      set({ idToken: freshToken })
+      // Firebase returns its cached token while it is valid and refreshes it
+      // automatically near expiry. Forcing a new token on every WebSocket
+      // reconnect changes idToken each time and restarts the socket effect.
+      const freshToken = await currentUser.getIdToken()
+      if (get().idToken !== freshToken) {
+        set({ idToken: freshToken })
+      }
       return freshToken
     } catch (err) {
       console.error('Failed to refresh token:', err)
