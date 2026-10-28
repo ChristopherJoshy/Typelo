@@ -45,7 +45,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
 import { useInventoryStore } from '../stores/inventoryStore'
-import { API_ENDPOINTS, getUserMatches } from '../config/api'
+import { API_ENDPOINTS, apiFetch, getUserMatches } from '../config/api'
 import { getRankColor, getRankFromElo, getProfileBackgroundInfo, getProfileBorderInfo, getProfileEffectInfo } from '../types'
 import SparklineChart from './SparklineChart'
 import RankBadge from './icons/RankBadge'
@@ -110,7 +110,7 @@ export default function EnhancedProfileModal({
 
         setLoading(true)
         try {
-            const response = await fetch(`${API_ENDPOINTS.userMatches}?page=${page}&limit=${limit}`, {
+            const response = await apiFetch(`${API_ENDPOINTS.userMatches}?page=${page}&limit=${limit}`, {
                 headers: {
                     'Authorization': `Bearer ${idToken}`
                 }

@@ -45,6 +45,14 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+export function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(options.headers)
+  if (new URL(url, window.location.origin).hostname.endsWith('.ngrok-free.dev')) {
+    headers.set('ngrok-skip-browser-warning', 'true')
+  }
+  return fetch(url, { ...options, headers })
+}
+
 export const API_ENDPOINTS = {
   health: `${API_BASE_URL}/health`,
   authVerify: `${API_BASE_URL}/api/auth/verify`,
@@ -75,7 +83,7 @@ export async function apiRequest<T>(
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     ...options,
     headers: {
       ...headers,
@@ -102,7 +110,7 @@ export async function apiRequest<T>(
 
 export async function checkBackendHealth(): Promise<boolean> {
   try {
-    const response = await fetch(API_ENDPOINTS.health, {
+    const response = await apiFetch(API_ENDPOINTS.health, {
       method: 'GET',
       signal: AbortSignal.timeout(5000),
     })
@@ -148,7 +156,7 @@ export async function getUserProfile(token: string): Promise<{
   return apiRequest(API_ENDPOINTS.userProfile, {}, token)
 }
 export const redeemCode = async (token: string, code: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/earn/redeem`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/earn/redeem`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,

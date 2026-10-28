@@ -46,6 +46,7 @@
 # starlette.requests.Request: Type hinting for requests.
 
 from fastapi import FastAPI
+import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import firebase_admin
@@ -92,10 +93,12 @@ async def lifespan(app: FastAPI):
     await Database.connect()
     
     await matchmaking_service.init_redis()
+    pending_cleanup = asyncio.create_task(matchmaking_service._periodic_pending_cleanup())
     
     yield
     
     logger.info("Graceful shutdown: ending active games...")
+    pending_cleanup.cancel()
     active_matches = list(game_service._sessions.keys())
     for match_id in active_matches:
         try:

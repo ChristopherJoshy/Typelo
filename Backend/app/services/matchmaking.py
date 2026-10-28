@@ -163,9 +163,6 @@ class MatchmakingService:
         # Local cache for pending matches before game start
         self._pending_matches: Dict[str, PendingMatch] = {}
         
-        # Start background task for cleanup
-        asyncio.create_task(self._periodic_pending_cleanup())
-        
     async def init_redis(self):
         """Initialize Redis connection"""
         if not self._redis_connected:

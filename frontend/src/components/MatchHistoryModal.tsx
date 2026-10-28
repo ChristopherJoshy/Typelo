@@ -41,7 +41,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { API_ENDPOINTS } from '../config/api'
+import { API_ENDPOINTS, apiFetch } from '../config/api'
 import { useAuthStore } from '../stores/authStore'
 
 interface MatchHistoryEntry {
@@ -78,7 +78,7 @@ export default function MatchHistoryModal({ isOpen, onClose }: MatchHistoryModal
 
     setLoading(true)
     try {
-      const response = await fetch(`${API_ENDPOINTS.userMatches}?page=${page}&limit=${limit}`, {
+      const response = await apiFetch(`${API_ENDPOINTS.userMatches}?page=${page}&limit=${limit}`, {
         headers: {
           'Authorization': `Bearer ${idToken}`
         }

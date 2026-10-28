@@ -47,7 +47,7 @@ import {
   User as FirebaseUser
 } from 'firebase/auth'
 import { auth, googleProvider } from '../config/firebase'
-import { verifyToken, getUserProfile } from '../config/api'
+import { apiFetch, verifyToken, getUserProfile } from '../config/api'
 import { DEFAULT_ELO } from '../constants'
 import type { User, UserStats, Rank } from '../types'
 
@@ -257,7 +257,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ loading: true, error: null })
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/guest/register`, {
+      const response = await apiFetch(`${import.meta.env.VITE_API_URL}/api/auth/guest/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -301,7 +301,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ loading: true, error: null })
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/guest/login`, {
+      const response = await apiFetch(`${import.meta.env.VITE_API_URL}/api/auth/guest/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -371,7 +371,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const firebaseToken = await result.user.getIdToken()
 
       // Call conversion endpoint
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/guest/convert`, {
+      const response = await apiFetch(`${import.meta.env.VITE_API_URL}/api/auth/guest/convert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
