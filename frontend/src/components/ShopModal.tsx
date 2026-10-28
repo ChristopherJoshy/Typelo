@@ -17,8 +17,8 @@
  * CrownIcon: Custom SVG icon for the "Cursor Royal" header.
  * CoinIcon: Custom SVG icon for coins.
  * SpinnerIcon: Custom SVG icon for the loading state.
- * playSpinTick: Synthesizes a ticking sound using Tone.js.
- * playWinSound: Synthesizes a victory sound using Tone.js.
+ * playSpinTick: Plays a short browser-native tick during the roll.
+ * playWinSound: Plays a rarity-based reveal sound.
  * 
  * --------------------------------------------------------------------------
  *                            Variables and others
@@ -35,7 +35,7 @@
  * react: useState, useEffect, useMemo, useRef.
  * framer-motion: motion, AnimatePresence, useAnimation.
  * react-dom: createPortal.
- * tone: Audio synthesis for sound effects.
+ * utils/audio: Lazy browser-native sound effects.
  * inventoryStore: Global state for user inventory and spin actions.
  * authStore: Authentication state.
  * types: Shared types like CursorInfo, SpinResult, and helpers like getRarityColor.
@@ -44,9 +44,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, useAnimation } from 'framer-motion'
 import { createPortal } from 'react-dom'
-import * as Tone from 'tone'
 import { useInventoryStore, SPIN_COST, PROFILE_SPIN_COST } from '../stores/inventoryStore'
 import { useAuthStore } from '../stores/authStore'
+import { playClickSound, playRaritySound, unlockAudio } from '../utils/audio'
 import { getLeaderboardBonus, type LeaderboardBonus } from '../config/api'
 import {
     CURSORS, EFFECTS, getRarityColor, type SpinResult, type CursorInfo, type EffectInfo,
@@ -163,51 +163,14 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
 
     // Sound Helpers
     const playTickSound = useCallback(() => {
-        const now = Tone.now()
-        if (now - lastTickRef.current < 0.03) return
+        const now = performance.now()
+        if (now - lastTickRef.current < 30) return
         lastTickRef.current = now
-
-        const synth = new Tone.MembraneSynth({
-            pitchDecay: 0.02,
-            octaves: 1,
-            volume: -18,
-            envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 }
-        }).toDestination()
-        synth.triggerAttackRelease("C3", "64n")
-        window.setTimeout(() => synth.dispose(), 500)
+        playClickSound()
     }, [])
 
     const playWinSound = useCallback((rarity: string = 'common') => {
-        const now = Tone.now()
-        const synth = new Tone.PolySynth(Tone.Synth).toDestination()
-
-        if (rarity === 'mythical' || rarity === 'divine') {
-            synth.volume.value = -3
-            synth.triggerAttackRelease(["C3", "E3", "G3", "B3"], "4n", now)
-            synth.triggerAttackRelease(["E3", "G3", "B3", "D4"], "4n", now + 0.15)
-            synth.triggerAttackRelease(["G3", "B3", "D4", "F#4"], "4n", now + 0.3)
-            synth.triggerAttackRelease(["B3", "D4", "F#4", "A4"], "2n", now + 0.45)
-
-            const sparkle = new Tone.PluckSynth().toDestination()
-            sparkle.volume.value = -8
-            sparkle.triggerAttackRelease("A5", now + 0.6)
-            sparkle.triggerAttackRelease("C6", now + 0.7)
-            sparkle.triggerAttackRelease("E6", now + 0.8)
-            window.setTimeout(() => sparkle.dispose(), 2500)
-        } else if (rarity === 'legendary' || rarity === 'ultra') {
-            synth.volume.value = -5
-            synth.triggerAttackRelease(["D4", "F#4", "A4", "D5"], "8n", now)
-            synth.triggerAttackRelease(["D4", "A4", "D5", "F#5"], "8n", now + 0.15)
-            synth.triggerAttackRelease(["D4", "D5", "F#5", "A5"], "2n", now + 0.3)
-        } else if (rarity === 'epic') {
-            synth.volume.value = -8
-            synth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "8n", now)
-            synth.triggerAttackRelease(["E4", "G4", "C5", "E5"], "4n", now + 0.1)
-        } else {
-            synth.volume.value = -10
-            synth.triggerAttackRelease(["C4", "E4", "G4"], "4n", now)
-        }
-        window.setTimeout(() => synth.dispose(), 3000)
+        playRaritySound(rarity)
     }, [])
 
     // Handle Animation Phase
@@ -310,8 +273,8 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
         const cost = leaderboardBonus?.gachaDiscountedCost ?? SPIN_COST
         if (!idToken || coins < cost || isSpinning) return
 
-        // Ensure audio context is ready
-        Tone.start().catch(() => { })
+        // Unlock audio synchronously from this click before the API request.
+        unlockAudio()
 
         setIsSpinning(true)
         if (tickIntervalRef.current) clearTimeout(tickIntervalRef.current)

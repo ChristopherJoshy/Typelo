@@ -15,6 +15,7 @@
  * --------------------------------------------------------------------------
  * playRaritySound: Plays a sound based on rarity tier.
  * playSpinSound: Plays the gacha spin animation sound.
+ * unlockAudio: Creates and resumes the audio context from a user gesture.
  * 
  * --------------------------------------------------------------------------
  *                            Variables and others
@@ -35,6 +36,21 @@ const getAudioContext = (): AudioContext => {
         audioContext = new AudioContext()
     }
     return audioContext
+}
+
+/**
+ * Creates/resumes audio while the browser still has a user gesture to allow it.
+ * This keeps gacha audio from trying to autoplay during initial page load.
+ */
+export function unlockAudio() {
+    try {
+        const ctx = getAudioContext()
+        if (ctx.state === 'suspended') {
+            void ctx.resume().catch(() => undefined)
+        }
+    } catch {
+        // Audio is optional; keep the shop usable if the browser blocks it.
+    }
 }
 
 // Rarity -> Frequency & duration for Web Audio synthesis

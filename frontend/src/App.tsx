@@ -27,7 +27,6 @@
  * --------------------------------------------------------------------------
  * react: React core/hooks.
  * react-router-dom: Routing.
- * @vercel/analytics/react: Analytics.
  * stores: Zustand stores for state.
  * contexts: React contexts (WebSocket).
  * hooks: Custom hooks.
@@ -36,7 +35,6 @@
 
 import { useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Analytics } from '@vercel/analytics/react'
 import { useAuthStore } from './stores/authStore'
 import { useConnectionStore } from './stores/connectionStore'
 import { useInventoryStore } from './stores/inventoryStore'
@@ -97,7 +95,6 @@ function App() {
 
   return (
     <>
-      <Analytics />
       <CursorEffect effectId={equippedEffect} />
       <WebSocketProvider>
         <Layout>
