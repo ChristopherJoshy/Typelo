@@ -213,232 +213,51 @@ export default function Game() {
             exit={{ opacity: 0 }}
             className="flex-1 flex flex-col relative"
           >
-            {/* Overlay for Waiting State - DRAMATIC VS SCREEN */}
             {status === 'waiting' && (
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center overflow-hidden bg-[#08090d]">
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#050505]">
+                <section className="w-full max-w-xl px-5 text-center">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-rose-300">
+                    {matchInfo?.gameMode === 'training' ? 'Training' : matchInfo?.gameMode === 'friends' ? 'Friends match' : 'Ranked match'}
+                  </p>
 
-                {/* Animated background effects - Minimal and Clean */}
-                <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                  {/* Subtle ambient glow */}
-                  <motion.div
-                    className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_45%,rgba(244,63,94,0.15),transparent_40%),radial-gradient(ellipse_at_80%_45%,rgba(139,92,246,0.15),transparent_40%)]"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 2 }}
-                  />
-                </div>
-
-                {/* Main VS Content */}
-                <div className="relative z-10 flex w-full max-w-3xl flex-col items-center px-6">
-
-                  {/* Mode Badge */}
-                  <motion.div
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3, duration: 0.5 }}
-
-                  >
-                    <span className={`inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] md:text-xs ${matchInfo?.gameMode === 'training' ? 'text-emerald-400'
-                      : matchInfo?.gameMode === 'friends' ? 'text-purple-400'
-                        : 'text-rose-400'
-                      }`}>
-                      {matchInfo?.gameMode === 'training' ? 'Training' : matchInfo?.gameMode === 'friends' ? 'Friends' : 'Ranked'}
-                    </span>
-                  </motion.div>
-
-                  {/* Players Container - Horizontal on mobile */}
-                  <div className="mt-10 flex w-full flex-row items-center justify-center gap-4 md:mt-14 md:gap-0">
-
-                    {/* Player 1 (You) */}
-                    <motion.div
-                      initial={{ x: -100, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      transition={{ type: "spring", stiffness: 50, damping: 15, delay: 0.2 }}
-                      className="flex flex-col items-center flex-1"
-                    >
-                      {/* Avatar */}
-                      <div className="relative mb-4 md:mb-6">
-                        {/* Simple static ring */}
-                        <div className="absolute -inset-1 rounded-full border border-white/10" />
-
-                        {/* Avatar Image */}
-                        {user?.photoURL ? (
-                          <img
-                            src={user.photoURL}
-                            alt={user.displayName}
-                            className="relative w-16 h-16 md:w-32 md:h-32 rounded-full border border-white/20 shadow-2xl"
-                            crossOrigin="anonymous"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="relative w-16 h-16 md:w-32 md:h-32 rounded-full border border-white/20 bg-gray-900 flex items-center justify-center">
-                            <span className="text-xl md:text-4xl font-bold text-white/50">
-                              {user?.displayName?.charAt(0) || '?'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Name */}
-                      <motion.h2
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 }}
-                        className="text-sm md:text-3xl font-bold text-white tracking-tight mb-1 md:mb-2 max-w-[100px] md:max-w-none truncate text-center"
-                      >
-                        {user?.displayName?.split(' ')[0] || 'Player'}
-                      </motion.h2>
-
-                      {/* ELO Badge */}
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.7 }}
-                        className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-0.5 md:py-1.5 rounded-full bg-white/5 border border-white/10"
-                      >
-                        <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-rose-500" />
-                        <span className="text-[10px] md:text-sm font-mono text-white/70">{stats?.currentElo || 1000}</span>
-                      </motion.div>
-                    </motion.div>
-
-                    {/* VS Badge - Minimal */}
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ delay: 0.4 }}
-                      className="relative mx-4 md:mx-12"
-                    >
-                      <span className="text-xl md:text-3xl font-light text-white/30 tracking-widest">
-                        VS
-                      </span>
-                    </motion.div>
-
-                    {/* Player 2 (Opponent) */}
-                    <motion.div
-                      initial={{ x: 100, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      transition={{ type: "spring", stiffness: 50, damping: 15, delay: 0.4 }}
-                      className="flex flex-col items-center flex-1"
-                    >
-                      {/* Avatar */}
-                      <div className="relative mb-4 md:mb-6">
-                        {/* Simple static ring */}
-                        <div className="absolute -inset-1 rounded-full border border-white/10" />
-
-                        {/* Avatar Image */}
-                        {matchInfo?.opponentPhotoURL && !matchInfo?.opponentIsBot ? (
-                          <img
-                            src={matchInfo.opponentPhotoURL}
-                            alt={matchInfo.opponentDisplayName}
-                            className="relative w-16 h-16 md:w-32 md:h-32 rounded-full border border-white/20 shadow-2xl"
-                            crossOrigin="anonymous"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="relative w-16 h-16 md:w-32 md:h-32 rounded-full border border-white/20 bg-gray-900 flex items-center justify-center">
-                            {matchInfo?.opponentIsBot ? (
-                              <svg width="60%" height="60%" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-violet-400">
-                                <rect x="3" y="11" width="18" height="10" rx="2" />
-                                <circle cx="12" cy="5" r="2" />
-                                <path d="M12 7v4" />
-                                <line x1="8" y1="16" x2="8" y2="16" />
-                                <line x1="16" y1="16" x2="16" y2="16" />
-                              </svg>
-                            ) : (
-                              <span className="text-xl md:text-4xl font-bold text-white/50">
-                                {matchInfo?.opponentDisplayName?.charAt(0) || '?'}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Name */}
-                      <motion.h2
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.6 }}
-                        className="text-sm md:text-3xl font-bold text-white tracking-tight mb-1 md:mb-2 max-w-[100px] md:max-w-none truncate text-center"
-                      >
-                        {matchInfo?.opponentDisplayName?.split(' ')[0] || 'Opponent'}
-                      </motion.h2>
-
-                      {/* ELO/Bot Badge */}
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.8 }}
-                        className={`flex items-center gap-1 md:gap-2 px-2 md:px-4 py-0.5 md:py-1.5 rounded-full border ${matchInfo?.opponentIsBot
-                          ? 'bg-violet-500/10 border-violet-500/30'
-                          : 'bg-white/5 border-white/10'
-                          }`}
-                      >
-                        <span className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${matchInfo?.opponentIsBot ? 'bg-violet-500' : 'bg-violet-400'}`} />
-                        <span className="text-[10px] md:text-sm font-mono text-white/70">
-                          {matchInfo?.opponentIsBot ? 'Bot' : matchInfo?.opponentElo || '???'}
-                        </span>
-                      </motion.div>
-                    </motion.div>
-                  </div>
-
-                  {/* Countdown Section - Minimal */}
-                  <div aria-live="polite" className="mt-12 flex h-24 flex-col items-center justify-center md:mt-16 md:h-32">
-                    <AnimatePresence mode="wait">
-                      {autoStartCountdown !== null && autoStartCountdown > 0 ? (
-                        <motion.div
-                          key={autoStartCountdown}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ duration: 0.2 }}
-                          className="relative"
-                        >
-                          <span className="block font-mono text-6xl font-semibold tracking-tighter text-white md:text-8xl">
-                            {autoStartCountdown}
-                          </span>
-                        </motion.div>
-                      ) : autoStartCountdown === null ? (
-                        <motion.div
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="flex flex-col items-center gap-4"
-                        >
-                          <div className="flex items-center gap-3">
-                            {[0, 1, 2].map((i) => (
-                              <motion.div
-                                key={i}
-                                className="w-1.5 h-1.5 rounded-full bg-white/30"
-                                animate={{ opacity: [0.3, 1, 0.3] }}
-                                transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2 }}
-                              />
-                            ))}
-                          </div>
-                          <span className="text-xs uppercase tracking-[0.2em] text-white/30">
-                            Preparing match
-                          </span>
-                        </motion.div>
+                  <div className="mt-10 grid grid-cols-[1fr_auto_1fr] items-center gap-4 sm:gap-8">
+                    <div className="flex min-w-0 flex-col items-center gap-2">
+                      {user?.photoURL ? (
+                        <img src={user.photoURL} alt="" className="h-12 w-12 rounded-full object-cover" crossOrigin="anonymous" referrerPolicy="no-referrer" />
                       ) : (
-                        <motion.div
-                          initial={{ scale: 0.9, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          className="text-4xl font-semibold tracking-tight text-emerald-300 md:text-6xl"
-                        >
-                          GO
-                        </motion.div>
+                        <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-sm text-white/70">
+                          {user?.displayName?.charAt(0) || 'Y'}
+                        </span>
                       )}
-                    </AnimatePresence>
+                      <span className="max-w-full truncate text-sm font-medium text-white">{user?.displayName?.split(' ')[0] || 'You'}</span>
+                      <span className="font-mono text-xs text-white/40">{stats?.currentElo || 1000}</span>
+                    </div>
+
+                    <span aria-hidden="true" className="text-xs font-medium text-white/30">VS</span>
+
+                    <div className="flex min-w-0 flex-col items-center gap-2">
+                      {matchInfo?.opponentPhotoURL && !matchInfo.opponentIsBot ? (
+                        <img src={matchInfo.opponentPhotoURL} alt="" className="h-12 w-12 rounded-full object-cover" crossOrigin="anonymous" referrerPolicy="no-referrer" />
+                      ) : (
+                        <span aria-hidden="true" className="grid h-12 w-12 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-sm text-white/55">
+                          {matchInfo?.opponentIsBot ? 'AI' : matchInfo?.opponentDisplayName?.charAt(0) || '?'}
+                        </span>
+                      )}
+                      <span className="max-w-full truncate text-sm font-medium text-white">{matchInfo?.opponentDisplayName?.split(' ')[0] || 'Opponent'}</span>
+                      <span className="font-mono text-xs text-white/40">{matchInfo?.opponentIsBot ? 'Bot' : matchInfo?.opponentElo || '—'}</span>
+                    </div>
                   </div>
 
-                  {/* Bottom hint */}
-                  <motion.p
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 1.5 }}
-                    className="mt-5 text-xs uppercase tracking-[0.2em] text-white/40"
-                  >
-                    Get ready to type
-                  </motion.p>
-                </div>
+                  <div aria-live="polite" className="mt-14 flex min-h-24 flex-col items-center justify-center">
+                    {autoStartCountdown !== null && autoStartCountdown > 0 ? (
+                      <span className="font-mono text-7xl font-medium tabular-nums tracking-tight text-white">{autoStartCountdown}</span>
+                    ) : autoStartCountdown === null ? (
+                      <span className="text-sm text-white/45">Preparing match…</span>
+                    ) : (
+                      <span className="text-2xl font-semibold text-rose-300">Go</span>
+                    )}
+                  </div>
+                </section>
               </div>
             )}
 

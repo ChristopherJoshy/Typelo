@@ -102,7 +102,6 @@ export default function ComparisonPage({ data }: ComparisonPageProps) {
     return (
         <>
             <SEOHead
-                title={`Typelo vs ${data.competitorName} – Competitive Typing Comparison`}
                 description={data.metaDescription}
                 path={`/compare/typelo-vs-${data.slug}`}
             />

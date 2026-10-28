@@ -142,32 +142,23 @@ export default function UserStats({
         {/* Rank Badge - Clickable */}
         <motion.div
           variants={item}
-          whileHover={{ y: -2, scale: 1.01 }}
-          className="flex items-center gap-6 p-5 rounded-2xl bg-white/[0.02] backdrop-blur-sm 
-                     border border-white/10 hover:border-white/20 hover:bg-white/[0.05]
-                     hover:shadow-[0_8px_32px_rgba(0,0,0,0.4)]
-                     transition-all duration-300 cursor-pointer group relative overflow-hidden"
+          className="flex items-center gap-5 rounded-2xl border border-white/10 bg-white/[0.025] p-4 transition-colors hover:border-white/20 cursor-pointer group"
           onClick={() => setShowRanksModal(true)}
         >
-          {/* Gradient accent */}
-          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-r from-rose-500/5 via-transparent to-purple-500/5" />
           <RankBadge
             rank={rank}
-            size={96}
-            animate
+            size={76}
+            animate={false}
           />
           <div className="flex-1">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h2 className="text-2xl font-bold tracking-tight group-hover:text-white transition-colors">
+                <h2 className="text-xl font-semibold tracking-tight text-white">
                   {rank}
                 </h2>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-text-secondary uppercase tracking-wider">
-                  Rank
-                </span>
               </div>
             </div>
-            <p className="text-sm font-mono text-accent-focus mt-1">{stats.currentElo} ELO</p>
+            <p className="mt-1 text-sm font-mono tabular-nums text-rose-300">{stats.currentElo} ELO</p>
             {/* Rank Progress Bar */}
             {(() => {
               const rankThresholds = [
@@ -185,24 +176,24 @@ export default function UserStats({
 
               return (
                 <div className="mt-3">
-                  <div className="relative h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="relative h-1.5 overflow-hidden rounded-full bg-white/10">
                     <div
                       className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
                       style={{
                         width: `${progressPercent}%`,
-                        background: 'linear-gradient(90deg, #ef4444, #f97316, #eab308)',
+                        background: '#fb7185',
                       }}
                     />
                   </div>
                   <div className="flex justify-end mt-1.5">
                     <span className="text-xs font-mono text-white/40">
                       {isMaxRank ? (
-                        <span className="text-yellow-400">MAX RANK</span>
+                        <span className="text-rose-300">MAX RANK</span>
                       ) : (
                         <>
                           <span className="text-white/60">{stats.currentElo}</span>
-                          <span className="text-white/30">/</span>
-                          <span className="text-white/40">{progressMax}</span>
+                          <span className="text-white/45">/</span>
+                          <span className="text-white/60">{progressMax}</span>
                         </>
                       )}
                     </span>
@@ -231,16 +222,15 @@ export default function UserStats({
         <motion.button
           variants={item}
           onClick={() => setShowProfileModal(true)}
-          whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.08)" }}
-          whileTap={{ scale: 0.98 }}
-          className="relative flex items-center justify-between p-4 bg-gradient-to-r from-orange-500/10 to-red-500/10 rounded-xl border border-orange-500/20 group transition-all hover:border-orange-500/40"
+          whileTap={{ scale: 0.99 }}
+          className="relative flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.025] p-4 transition-colors hover:border-white/20 group"
         >
           {hasUnclaimedRankReward && (
             <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse z-10 box-content border-2 border-[#1a1a1a]" />
           )}
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500/20 to-red-500/20 flex items-center justify-center group-hover:from-orange-500/30 group-hover:to-red-500/30 transition-colors">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-orange-400 group-hover:text-orange-300 transition-colors">
+            <div className="grid h-10 w-10 place-items-center rounded-lg bg-white/[0.04]">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-rose-300">
                 <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
@@ -249,7 +239,7 @@ export default function UserStats({
               <p className="text-sm font-medium text-text-primary">
                 My Profile
               </p>
-              <p className="text-xs text-orange-400/70 mt-0.5">
+              <p className="mt-0.5 text-xs text-white/55">
                 View stats, history & more
               </p>
             </div>
@@ -260,7 +250,7 @@ export default function UserStats({
               <span className="text-xs font-mono text-text-muted mx-1">/</span>
               <span className="text-xs font-mono text-accent-error">{stats.losses}L</span>
             </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-orange-400/50 group-hover:translate-x-1 transition-transform">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/30 transition-transform group-hover:translate-x-0.5">
               <path d="M9 5l7 7-7 7" />
             </svg>
           </div>
@@ -281,14 +271,13 @@ export default function UserStats({
           <motion.button
             variants={item}
             onClick={onOpenFriends}
-            whileHover={{ scale: 1.01, backgroundColor: "rgba(255,255,255,0.05)" }}
-            whileTap={{ scale: 0.99 }}
-            className="relative px-4 py-3 rounded-lg border border-white/20 flex items-center justify-between hover:border-white/30 transition-all cursor-pointer group bg-white/[0.02]"
+              whileTap={{ scale: 0.99 }}
+            className="relative flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.025] px-4 py-3 transition-colors hover:border-white/20 cursor-pointer group"
           >
             {hasPendingRequests && (
               <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full animate-pulse z-10 box-content border-2 border-[#1a1a1a]" />
             )}
-            <span className="text-[10px] text-text-muted uppercase tracking-widest font-medium group-hover:text-text-secondary transition-colors">
+            <span className="text-[10px] font-medium uppercase tracking-widest text-text-muted transition-colors group-hover:text-white">
               Friends
             </span>
             <div className="flex items-center gap-3">
@@ -308,18 +297,17 @@ export default function UserStats({
         <motion.button
           variants={item}
           onClick={() => setShowInventory(true)}
-          whileHover={{ scale: 1.01, backgroundColor: "rgba(255,255,255,0.05)" }}
           whileTap={{ scale: 0.99 }}
-          className="px-4 py-3 rounded-lg border border-white/20 flex items-center justify-between hover:border-purple-500/30 transition-all cursor-pointer group bg-white/[0.02]"
+          className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.025] px-4 py-3 transition-colors hover:border-white/20 cursor-pointer group"
         >
           <div className="flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-purple-400">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-rose-300">
               <rect x="3" y="3" width="7" height="7" />
               <rect x="14" y="3" width="7" height="7" />
               <rect x="3" y="14" width="7" height="7" />
               <rect x="14" y="14" width="7" height="7" />
             </svg>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest font-medium group-hover:text-purple-400 transition-colors">
+            <span className="text-[10px] font-medium uppercase tracking-widest text-text-muted transition-colors group-hover:text-white">
               Inventory
             </span>
           </div>
@@ -332,22 +320,21 @@ export default function UserStats({
         <motion.button
           variants={item}
           onClick={() => setShowShop(true)}
-          whileHover={{ scale: 1.01, backgroundColor: "rgba(255,255,255,0.05)" }}
           whileTap={{ scale: 0.99 }}
-          className="px-4 py-3 rounded-lg border border-white/20 flex items-center justify-between hover:border-yellow-500/30 transition-all cursor-pointer group bg-white/[0.02]"
+          className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.025] px-4 py-3 transition-colors hover:border-white/20 cursor-pointer group"
         >
           <div className="flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-yellow-400">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-rose-300">
               <circle cx="9" cy="21" r="1" />
               <circle cx="20" cy="21" r="1" />
               <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" />
             </svg>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest font-medium group-hover:text-yellow-400 transition-colors">
+            <span className="text-[10px] font-medium uppercase tracking-widest text-text-muted transition-colors group-hover:text-white">
               Shop
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-yellow-400">{coins}</span>
+            <span className="text-xs font-mono tabular-nums text-white/65">{coins}</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted group-hover:translate-x-1 transition-transform">
               <path d="M9 5l7 7-7 7" />
             </svg>
@@ -358,24 +345,23 @@ export default function UserStats({
         <motion.button
           variants={item}
           onClick={() => setShowEarnCoins(true)}
-          whileHover={{ scale: 1.01, backgroundColor: "rgba(255,255,255,0.05)" }}
           whileTap={{ scale: 0.99 }}
-          className="relative px-4 py-3 rounded-lg border border-white/20 flex items-center justify-between hover:border-emerald-500/30 transition-all cursor-pointer group bg-white/[0.02]"
+          className="relative flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.025] px-4 py-3 transition-colors hover:border-white/20 cursor-pointer group"
         >
           {hasUnclaimedQuests && (
             <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full animate-pulse z-10 box-content border-2 border-[#1a1a1a]" />
           )}
           <div className="flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-emerald-400">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-rose-300">
               <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
               <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
             </svg>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest font-medium group-hover:text-emerald-400 transition-colors">
+            <span className="text-[10px] font-medium uppercase tracking-widest text-text-muted transition-colors group-hover:text-white">
               Earn Coins
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono text-emerald-400 uppercase">Free</span>
+            <span className="text-[10px] font-mono uppercase text-white/65">Free</span>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted group-hover:translate-x-1 transition-transform">
               <path d="M9 5l7 7-7 7" />
             </svg>
@@ -386,21 +372,20 @@ export default function UserStats({
         <motion.button
           variants={item}
           onClick={() => setShowDailyReward(true)}
-          whileHover={{ scale: 1.01, backgroundColor: "rgba(255,255,255,0.05)" }}
           whileTap={{ scale: 0.99 }}
-          className="px-4 py-3 rounded-lg border border-white/20 flex items-center justify-between hover:border-amber-500/30 transition-all cursor-pointer group bg-white/[0.02]"
+          className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.025] px-4 py-3 transition-colors hover:border-white/20 cursor-pointer group"
         >
           <div className="flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-rose-300">
               <rect x="3" y="4" width="18" height="18" rx="2" />
               <path d="M16 2v4M8 2v4M3 10h18" />
             </svg>
-            <span className="text-[10px] text-text-muted uppercase tracking-widest font-medium group-hover:text-amber-400 transition-colors">
+            <span className="text-[10px] font-medium uppercase tracking-widest text-text-muted transition-colors group-hover:text-white">
               Daily Rewards
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted group-hover:translate-x-1 transition-transform">
               <path d="M9 5l7 7-7 7" />
             </svg>
@@ -446,29 +431,14 @@ function StatBox({ label, value, variants, chartData, color = '#ffffff' }: { lab
   return (
     <motion.div
       variants={variants}
-      whileHover={{ y: -3, scale: 1.02 }}
-      className="p-4 bg-white/[0.02] backdrop-blur-sm rounded-xl border border-white/10 
-                 hover:border-white/20 hover:bg-white/[0.05] 
-                 hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)]
-                 transition-all duration-300 group relative overflow-hidden"
+      className="relative rounded-xl border border-white/10 bg-white/[0.025] p-4 transition-colors hover:border-white/20"
     >
-      {/* Gradient overlay on hover */}
-      <div
-        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{
-          background: `linear-gradient(135deg, ${color}08 0%, transparent 50%)`,
-        }}
-      />
-
-      <div className="relative z-10">
-        <p className="text-[10px] text-text-muted uppercase tracking-widest mb-2 font-medium group-hover:text-text-secondary transition-colors">
+      <div>
+        <p className="mb-2 text-[10px] font-medium uppercase tracking-widest text-text-muted">
           {label}
         </p>
         <p
-          className="text-2xl font-mono font-bold tracking-tighter text-text-primary group-hover:text-white transition-colors"
-          style={{
-            textShadow: `0 0 20px ${color}20`
-          }}
+          className="text-2xl font-mono font-medium tabular-nums tracking-tight text-white"
         >
           {value}
         </p>
@@ -476,7 +446,7 @@ function StatBox({ label, value, variants, chartData, color = '#ffffff' }: { lab
 
       {/* Background Chart */}
       {chartData && chartData.length > 2 && (
-        <div className="absolute bottom-0 left-0 right-0 h-12 opacity-40 group-hover:opacity-60 transition-opacity">
+        <div className="absolute bottom-0 left-0 right-0 h-12 opacity-20">
           <SparklineChart data={chartData} color={color} height={48} showArea={true} />
         </div>
       )}

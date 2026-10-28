@@ -9,7 +9,7 @@
   --bg-tertiary: #141414;
   --text-primary: #ffffff;
   --text-secondary: #a1a1a1;
-  --text-muted: #525252;
+  --text-muted: #858585;
   --accent-correct: #22c55e;
   --accent-error: #ef4444;
   --accent-focus: #3b82f6;
@@ -27,7 +27,7 @@ body,
   height: 100%;
   width: 100%;
   background-color: var(--bg-primary);
-  background-image: radial-gradient(circle at 50% 50%, #111111 0%, #000000 100%);
+  background-image: none;
   color: var(--text-primary);
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -1142,4 +1142,67 @@ body,
 
 .animate-frame-sparkle {
   animation: frame-sparkle 1.5s ease-in-out infinite;
+}
+
+
+/* Shared Typelo surfaces keep overlays quiet and consistent. */
+.typelo-modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+
+.typelo-profile-effect-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.typelo-profile-effect-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: var(--typelo-profile-effect-gradient);
+  background-size: 240% 100%;
+  background-position: 100% 0;
+  opacity: 0.58;
+  animation: typelo-profile-effect-sheen var(--typelo-profile-effect-duration, 4.2s) ease-in-out infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+@keyframes typelo-profile-effect-sheen {
+  50% { background-position: 0 0; opacity: 0.82; }
+  100% { background-position: 100% 0; opacity: 0.58; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typelo-profile-effect-frame::before { animation: none; }
+}
+.typelo-modal-surface {
+  background-color: #0a0a0a;
+  border-color: rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.48);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  body {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
 }

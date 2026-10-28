@@ -1,12 +1,13 @@
-const STATIC_CACHE = 'typelo-static-v1';
-const DYNAMIC_CACHE = 'typelo-dynamic-v1';
+const STATIC_CACHE = 'typelo-static-v2';
+const DYNAMIC_CACHE = 'typelo-dynamic-v2';
 
 const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
     '/manifest.json',
-    '/typelo.svg',
-    '/evotaion.svg',
+    '/favicon.svg',
+    '/favicon-match.svg',
+    '/favicon-offline.svg',
     '/icon-192.png',
     '/icon-512.png',
     '/sounds/match-found.mp3',

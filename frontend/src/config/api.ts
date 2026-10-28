@@ -155,6 +155,23 @@ export async function getUserProfile(token: string): Promise<{
 }> {
   return apiRequest(API_ENDPOINTS.userProfile, {}, token)
 }
+
+export async function getUpdateSeen(version: string, token: string): Promise<boolean> {
+  const response = await apiRequest<{ seen: boolean }>(
+    `${API_BASE_URL}/api/user/updates/seen?version=${encodeURIComponent(version)}`,
+    {},
+    token,
+  )
+  return response.seen
+}
+
+export async function markUpdateSeen(version: string, token: string): Promise<void> {
+  await apiRequest(`${API_BASE_URL}/api/user/updates/seen`, {
+    method: 'POST',
+    body: JSON.stringify({ version }),
+  }, token)
+}
+
 export const redeemCode = async (token: string, code: string) => {
   const response = await apiFetch(`${API_BASE_URL}/api/earn/redeem`, {
     method: 'POST',

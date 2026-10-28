@@ -3,7 +3,16 @@ from unittest.mock import patch
 
 from app.services.anticheat import AntiCheatService, Keystroke
 from app.services.bot import BotConfig, TypingBot
-from app.constants import GACHA_WEIGHTS, LUCK_BOOST_WEIGHTS, PROFILE_GACHA_WEIGHTS, PROFILE_LUCK_BOOST_WEIGHTS
+from app.services.game import PlayerState, calculate_match_coin_base
+from app.models.user import Rank
+from app.constants import (
+    GACHA_WEIGHTS,
+    LUCK_BOOST_WEIGHTS,
+    PROFILE_GACHA_WEIGHTS,
+    PROFILE_LUCK_BOOST_WEIGHTS,
+    LOSS_COIN_REWARD,
+    WIN_COIN_REWARD,
+)
 
 
 class GameBalanceTests(unittest.TestCase):
@@ -55,6 +64,26 @@ class GameBalanceTests(unittest.TestCase):
         slow_wpm, _, slow_score = service.calculate_player_stats(slower_perfect, 'a' * 20, 30)
         self.assertGreater(fast_wpm, slow_wpm)
         self.assertGreater(fast_score, slow_score)
+
+    def test_no_match_coins_for_idle_player(self):
+        player = PlayerState('player', 'Player', None, 1000, Rank.BRONZE)
+        bot = PlayerState('BOT', 'Bot', None, 1000, Rank.BRONZE, is_bot=True)
+        bot.score = 2360
+
+        self.assertEqual(calculate_match_coin_base(player, bot, 'a' * 30), 0)
+
+    def test_match_coins_require_correct_progress_and_follow_winner(self):
+        player = PlayerState('player', 'Player', None, 1000, Rank.BRONZE)
+        opponent = PlayerState('opponent', 'Opponent', None, 1000, Rank.BRONZE)
+        expected = 'a' * 30
+        player.final_characters = {index: 'a' for index in range(15)}
+
+        player.score = 100
+        opponent.score = 200
+        self.assertEqual(calculate_match_coin_base(player, opponent, expected), LOSS_COIN_REWARD)
+
+        player.score = 300
+        self.assertEqual(calculate_match_coin_base(player, opponent, expected), WIN_COIN_REWARD)
 
     def test_luck_boost_reduces_chance_of_no_reward(self):
         for normal, boosted in ((GACHA_WEIGHTS, LUCK_BOOST_WEIGHTS), (PROFILE_GACHA_WEIGHTS, PROFILE_LUCK_BOOST_WEIGHTS)):

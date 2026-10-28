@@ -227,12 +227,12 @@ export default function EarnCoinsModal({ isOpen, onClose }: EarnCoinsModalProps)
 
     const modal = (
         <div
-            className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            className="fixed inset-0 z-[300] flex items-center justify-center p-4 typelo-modal-backdrop"
             onClick={onClose}
         >
             <div
                 onClick={(e) => e.stopPropagation()}
-                className="relative w-full max-w-md overflow-hidden rounded-2xl bg-[#0a0a0a] border border-white/10"
+                className="relative w-full max-w-md overflow-hidden rounded-2xl bg-[#0a0a0a] border border-white/10 typelo-modal-surface"
             >
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">

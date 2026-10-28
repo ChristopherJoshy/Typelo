@@ -1,72 +1,23 @@
-/**
- *   ______      __ ____  _______       _  ____  _   _ 
- *  |  ____|   / / __ \|__   __|/\   | |/ __ \| \ | |
- *  | |__   _ / / |  | |  | |  /  \  | | |  | |  \| |
- *  |  __| | v /| |  | |  | | / /\ \ | | |  | | . ` |
- *  | |____ \ / | |__| |  | |/ ____ \| | |__| | |\  |
- *  |______| \_/ \____/   |_/_/    \_\_|\____/|_| \_|
- *
- * UpdateModal Component - Displays recent updates to users.
- * Auto-shows once per update version using localStorage tracking.
- *
- * --------------------------------------------------------------------------
- *                                  Functions
- * --------------------------------------------------------------------------
- * UpdateModal: Main component rendering the update changelog modal.
- *
- * --------------------------------------------------------------------------
- *                            Variables and others
- * --------------------------------------------------------------------------
- * UPDATE_VERSION: Current update version string for localStorage tracking.
- * UPDATES: Array of update items with titles and descriptions.
- * isOpen: State for modal visibility.
- *
- * --------------------------------------------------------------------------
- *                                   Imports
- * --------------------------------------------------------------------------
- * react: React hooks (useState, useEffect).
- * framer-motion: Animations for modal.
- */
+import { useCallback, useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { getUpdateSeen, markUpdateSeen } from '../config/api'
+import { useAuthStore } from '../stores/authStore'
 
-import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+const UPDATE_VERSION = '2026-10-28-minimal-refresh-v13'
 
-// Update this version string each time you push updates
-const UPDATE_VERSION = '2024-12-14-v12'
-const STORAGE_KEY = 'typelo_last_seen_update'
-
-interface UpdateItem {
-    icon: string
-    title: string
-    description: string
-    color: string
-}
-
-const UPDATES: UpdateItem[] = [
+const UPDATES = [
     {
-        icon: '✨',
-        title: 'Premium Profile Effects',
-        description: 'Discord-inspired animated borders with rainbow, galaxy, phoenix, aurora effects.',
-        color: '#a855f7'
+        title: 'A clearer lobby',
+        description: 'Modes and the match button now sit together in the center of the play area.',
     },
     {
-        icon: '🎨',
-        title: 'Inventory Redesign',
-        description: 'Minimal futuristic design with glassmorphism and enhanced item display.',
-        color: '#22d3ee'
+        title: 'Calmer screens',
+        description: 'The shop, rewards, profiles, and match results follow the same quieter style.',
     },
     {
-        icon: '🏆',
-        title: 'Leaderboard Bonuses',
-        description: 'Top 3: 50% bonus. Top 4-10: 20% bonus on luck, discounts, and match coins.',
-        color: '#fbbf24'
+        title: 'A more reliable reveal',
+        description: 'Crate animations now finish on the item the server actually awarded.',
     },
-    {
-        icon: '📦',
-        title: 'Profile Crates',
-        description: 'Spend 1000 coins to unlock exclusive profile customizations.',
-        color: '#f97316'
-    }
 ]
 
 interface UpdateModalProps {
@@ -76,6 +27,21 @@ interface UpdateModalProps {
 
 export default function UpdateModal({ forceOpen, onClose }: UpdateModalProps) {
     const [isOpen, setIsOpen] = useState(false)
+    const uid = useAuthStore(state => state.user?.uid ?? null)
+    const idToken = useAuthStore(state => state.idToken)
+    const storageKey = uid ? `typelo:last_seen_update:${uid}` : null
+
+    const handleClose = useCallback(() => {
+        if (storageKey) localStorage.setItem(storageKey, UPDATE_VERSION)
+        setIsOpen(false)
+        onClose?.()
+
+        if (idToken) {
+            void markUpdateSeen(UPDATE_VERSION, idToken).catch(() => {
+                // The per-account local marker prevents repeated popups while offline.
+            })
+        }
+    }, [idToken, onClose, storageKey])
 
     useEffect(() => {
         if (forceOpen) {
@@ -83,32 +49,58 @@ export default function UpdateModal({ forceOpen, onClose }: UpdateModalProps) {
             return
         }
 
-        const lastSeenVersion = localStorage.getItem(STORAGE_KEY)
-        if (lastSeenVersion !== UPDATE_VERSION) {
-            setIsOpen(true)
+        if (!uid || !storageKey) {
+            setIsOpen(false)
+            return
         }
-    }, [forceOpen])
+
+        let cancelled = false
+        const localSeen = localStorage.getItem(storageKey) === UPDATE_VERSION
+        if (localSeen) {
+            setIsOpen(false)
+            if (idToken) {
+                void markUpdateSeen(UPDATE_VERSION, idToken).catch(() => {
+                    // Keep retrying this idempotent sync on the user's next visit.
+                })
+            }
+            return
+        }
+
+        if (!idToken) {
+            setIsOpen(true)
+            return
+        }
+
+        void getUpdateSeen(UPDATE_VERSION, idToken)
+            .then(seen => {
+                if (cancelled) return
+                if (seen) localStorage.setItem(storageKey, UPDATE_VERSION)
+                setIsOpen(!seen)
+            })
+            .catch(() => {
+                if (!cancelled) setIsOpen(true)
+            })
+
+        return () => { cancelled = true }
+    }, [forceOpen, idToken, storageKey, uid])
 
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (isOpen && e.key === 'Escape') handleClose()
+        if (!isOpen) return
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') handleClose()
         }
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [isOpen])
-
-    const handleClose = () => {
-        localStorage.setItem(STORAGE_KEY, UPDATE_VERSION)
-        setIsOpen(false)
-        onClose?.()
-    }
+    }, [handleClose, isOpen])
 
     return (
         <AnimatePresence>
             {isOpen && (
                 <>
-                    <motion.div
-                        className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
+                    <motion.button
+                        type="button"
+                        aria-label="Close What's New"
+                        className="fixed inset-0 z-50 typelo-modal-backdrop"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -116,78 +108,60 @@ export default function UpdateModal({ forceOpen, onClose }: UpdateModalProps) {
                     />
 
                     <motion.div
-                        className="fixed inset-0 flex items-center justify-center z-50 p-4"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="updates-title"
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                     >
-                        <motion.div
-                            className="relative w-full max-w-md bg-[#0c0c0c] border border-white/[0.08] rounded-2xl overflow-hidden"
-                            initial={{ scale: 0.95, y: 20 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.95, y: 20 }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 400 }}
-                            onClick={(e) => e.stopPropagation()}
+                        <motion.section
+                            className="typelo-modal-surface relative w-full max-w-md overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0c0c0c]"
+                            initial={{ opacity: 0, y: 8, scale: 0.99 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.99 }}
+                            transition={{ duration: 0.18 }}
                         >
-                            {/* Header */}
-                            <div className="px-6 py-5 border-b border-white/[0.06]">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-focus/20 to-transparent flex items-center justify-center">
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-focus">
-                                                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-                                            </svg>
-                                        </div>
-                                        <div>
-                                            <h2 className="text-lg font-semibold text-white">What's New</h2>
-                                            <p className="text-xs text-text-muted">Latest updates</p>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={handleClose}
-                                        className="w-8 h-8 rounded-full bg-white/[0.05] hover:bg-white/[0.1] flex items-center justify-center transition-colors"
-                                    >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/50">
-                                            <path d="M18 6L6 18M6 6l12 12" />
-                                        </svg>
-                                    </button>
+                            <header className="flex items-start justify-between border-b border-white/[0.07] px-6 py-5">
+                                <div>
+                                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-rose-300">Typelo updates</p>
+                                    <h2 id="updates-title" className="mt-2 text-xl font-semibold tracking-tight text-white">What’s new</h2>
                                 </div>
-                            </div>
-
-                            {/* Updates List */}
-                            <div className="px-6 py-4 space-y-3 max-h-[60vh] overflow-y-auto">
-                                {UPDATES.map((update, index) => (
-                                    <motion.div
-                                        key={index}
-                                        initial={{ opacity: 0, x: -20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: index * 0.1 }}
-                                        className="flex gap-4 p-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
-                                    >
-                                        <div
-                                            className="w-10 h-10 rounded-lg flex items-center justify-center text-xl shrink-0"
-                                            style={{ background: `${update.color}15` }}
-                                        >
-                                            {update.icon}
-                                        </div>
-                                        <div className="min-w-0">
-                                            <h3 className="text-sm font-medium text-white mb-0.5">{update.title}</h3>
-                                            <p className="text-xs text-text-muted leading-relaxed">{update.description}</p>
-                                        </div>
-                                    </motion.div>
-                                ))}
-                            </div>
-
-                            {/* Footer */}
-                            <div className="px-6 py-4 border-t border-white/[0.06]">
                                 <button
+                                    type="button"
+                                    aria-label="Close What's New"
                                     onClick={handleClose}
-                                    className="w-full py-2.5 rounded-xl bg-accent-focus/10 hover:bg-accent-focus/20 text-accent-focus font-medium text-sm transition-colors"
+                                    className="rounded-lg p-2 text-white/45 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-400"
                                 >
-                                    Got it!
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                                        <path d="M18 6 6 18M6 6l12 12" />
+                                    </svg>
                                 </button>
-                            </div>
-                        </motion.div>
+                            </header>
+
+                            <ul className="divide-y divide-white/[0.06] px-6">
+                                {UPDATES.map((update, index) => (
+                                    <li key={update.title} className="flex gap-4 py-4">
+                                        <span aria-hidden="true" className="pt-0.5 font-mono text-xs tabular-nums text-rose-300/70">0{index + 1}</span>
+                                        <div>
+                                            <h3 className="text-sm font-medium text-white">{update.title}</h3>
+                                            <p className="mt-1 text-sm leading-relaxed text-white/50">{update.description}</p>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            <footer className="px-6 pb-6 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={handleClose}
+                                    className="h-12 w-full rounded-xl bg-rose-500 text-sm font-semibold text-white transition-colors hover:bg-rose-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300"
+                                >
+                                    Continue
+                                </button>
+                            </footer>
+                        </motion.section>
                     </motion.div>
                 </>
             )}

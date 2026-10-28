@@ -40,9 +40,10 @@
  */
 
 import React, { RefObject, KeyboardEvent, ChangeEvent, useMemo, useEffect, useRef, useState, useCallback, memo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useGameStore } from '../stores/gameStore'
 import { CursorInfo, EffectInfo, getCursorInfo, getEffectInfo } from '../types'
+import { getEffectVisual } from '../effects/visuals'
 
 // --- Types ---
 interface TypingAreaProps {
@@ -64,286 +65,60 @@ interface TypingAreaProps {
 let lastPlayerBurstAt = 0
 let lastOpponentBurstAt = 0
 
-// --- Cursor Burst Sub-Component (Ephemeral) ---
+// Compact, effect-specific bursts. Fixed offsets avoid a different animation
+// on every React render and keep multiplayer typing light on slower devices.
 const CursorBurst = memo(({ type, color, onComplete }: { type: string, color: string, onComplete?: () => void }) => {
-  const baseColor = color === 'rainbow' ? '#ec4899' : color
+  const visual = useMemo(() => getEffectVisual(type, color), [type, color])
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      onComplete?.()
-    }, 850)
-    return () => clearTimeout(timer)
+    const timer = window.setTimeout(() => onComplete?.(), 620)
+    return () => window.clearTimeout(timer)
   }, [onComplete])
 
-  const renderParticles = (count: number, particleStyle: (i: number) => React.CSSProperties, animStyle: (i: number) => object) => (
-    <span className="absolute inset-0 pointer-events-none overflow-visible flex items-center justify-center z-30">
-      {[...Array(Math.min(count, 5))].map((_, i) => (
-        <motion.span
-          key={i}
-          className="absolute rounded-full"
-          style={particleStyle(i)}
-          initial={{ opacity: 1, scale: 0.5, x: 0, y: 0 }}
-          animate={animStyle(i)}
-          transition={{ duration: 0.4 + Math.random() * 0.3, ease: "easeOut", delay: i * 0.02 }}
-        />
-      ))}
+  const isRing = visual.family === 'ripple' || visual.family === 'halo' || visual.family === 'void'
+  const isGlyph = visual.family === 'glyph' || visual.family === 'digital'
+  const isPetal = visual.family === 'petal' || visual.family === 'flame' || visual.family === 'mist'
+  const glyph = visual.glyph ?? (visual.family === 'digital' ? '▪' : visual.family === 'cosmic' ? '✦' : '·')
+  const particles = [
+    { x: -8, y: -8, delay: 0 },
+    { x: 8, y: -4, delay: 0.035 },
+    { x: 1, y: 7, delay: 0.07 },
+  ]
+
+  return (
+    <span className="absolute inset-0 z-30 flex items-center justify-center overflow-visible pointer-events-none" aria-hidden="true">
+      {particles.map((particle, index) => {
+        const particleColor = visual.palette[index % visual.palette.length]
+        return (
+          <motion.span
+            key={`${type}-${index}`}
+            className={`absolute ${isRing ? 'rounded-full border' : isGlyph ? 'font-mono font-semibold' : 'rounded-full'} ${isPetal ? 'rounded-tl-full rounded-br-full' : ''}`}
+            style={{
+              width: isGlyph ? 'auto' : isRing ? 7 : 3,
+              height: isGlyph ? 'auto' : isRing ? 7 : 3,
+              color: particleColor,
+              borderColor: isRing ? particleColor : undefined,
+              backgroundColor: isRing || isGlyph ? 'transparent' : particleColor,
+              boxShadow: `0 0 6px ${particleColor}80`,
+              fontSize: 9,
+              lineHeight: 1,
+            }}
+            initial={{ opacity: 0.9, x: 0, y: 0, scale: 0.65, rotate: 0 }}
+            animate={{
+              opacity: 0,
+              x: particle.x,
+              y: particle.y,
+              scale: isRing ? 1.8 : 0.8,
+              rotate: isPetal ? (index - 1) * 36 : 0,
+            }}
+            transition={{ duration: 0.48, delay: particle.delay, ease: [0.2, 0.7, 0.2, 1] }}
+          >
+            {isGlyph ? glyph : null}
+          </motion.span>
+        )
+      })}
     </span>
   )
-
-  switch (type) {
-    case 'sparkle':
-    case 'dust':
-    case 'gold_trail':
-      return renderParticles(12, // Increased count
-        () => ({ width: 14, height: 14, backgroundColor: baseColor, boxShadow: `0 0 15px ${baseColor}, 0 0 30px ${baseColor}` }), // Massively Increased size/glow
-        () => ({ y: -25 - Math.random() * 15, x: (Math.random() - 0.5) * 50, opacity: 0, scale: 2.0 }) // Increased travel and scale
-      )
-
-    case 'fire':
-    case 'dragon':
-    case 'lava':
-      return (
-        <span className="absolute inset-0 pointer-events-none overflow-visible z-30">
-            {[...Array(5)].map((_, i) => (
-            <motion.span
-              key={i}
-              className="absolute bottom-0 left-1/2 rounded-full"
-              style={{
-                width: 16 + Math.random() * 12, height: 16 + Math.random() * 12, // Massively Increased size
-                backgroundColor: i % 2 === 0 ? '#ef4444' : '#fbbf24',
-                boxShadow: `0 0 15px ${i % 2 === 0 ? '#ef4444' : '#fbbf24'}`, filter: 'blur(1px)' // Increased glow
-              }}
-              initial={{ opacity: 1, scale: 1, y: 0, x: '-50%' }}
-              animate={{ y: -30 - Math.random() * 20, x: (Math.random() - 0.5) * 40 - 10, opacity: 0, scale: 0.2 }} // Longer travel
-              transition={{ duration: 0.5 + Math.random() * 0.3, ease: "easeOut", delay: i * 0.02 }}
-            />
-          ))}
-        </span>
-      )
-
-    case 'electric':
-    case 'thunder':
-    case 'lightning':
-      return (
-        <span className="absolute inset-0 pointer-events-none overflow-visible flex items-center justify-center z-30">
-          <motion.span
-            className="absolute w-12 h-12 border-2 border-transparent rounded-full" // Increased size
-            style={{ borderTopColor: baseColor, borderBottomColor: baseColor, boxShadow: `0 0 10px ${baseColor}, 0 0 20px ${baseColor}` }} // Better glow
-            initial={{ opacity: 1, scale: 0.4, rotate: 0 }}
-            animate={{ opacity: 0, scale: 1.5, rotate: 360 }} // Reduced max scale to check clipping
-            transition={{ duration: 0.4, ease: "easeOut" }}
-          />
-          <motion.span
-            className="absolute w-8 h-8 rounded-full" // Increased size
-            style={{ backgroundColor: baseColor, boxShadow: `0 0 12px ${baseColor}, 0 0 24px ${baseColor}` }}
-            initial={{ opacity: 0.9, scale: 1 }}
-            animate={{ opacity: 0, scale: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-          />
-        </span>
-      )
-
-    case 'matrix':
-    case 'infinity':
-      return (
-        <span className="absolute inset-0 pointer-events-none overflow-visible flex justify-center z-30">
-          {[...Array(4)].map((_, i) => ( // Increased count
-            <motion.span
-              key={i}
-              className="absolute text-[14px] font-mono font-bold leading-none" // Larger text
-              style={{ color: type === 'matrix' ? '#22c55e' : '#818cf8', textShadow: `0 0 6px ${type === 'matrix' ? '#22c55e' : '#818cf8'}`, left: `${30 + (i - 1) * 15}%` }}
-              initial={{ opacity: 1, y: -5 }}
-              animate={{ y: 15, opacity: 0 }} // Reduced travel
-              transition={{ duration: 0.5 + i * 0.1, ease: "linear", delay: i * 0.05 }}
-            >
-              {type === 'matrix' ? String.fromCharCode(0x30A0 + Math.random() * 96) : '∞'}
-            </motion.span>
-          ))}
-        </span>
-      )
-
-    case 'confetti':
-    case 'cherry':
-      const colors = type === 'confetti' ? ['#ec4899', '#3b82f6', '#fbbf24', '#10b981', '#8b5cf6'] : ['#fda4af', '#f472b6', '#fecdd3']
-      return renderParticles(8, // Increased count
-        (i) => ({ width: 10, height: 10, backgroundColor: colors[i % colors.length], borderRadius: type === 'cherry' ? '50% 0' : '2px', boxShadow: '0 0 4px rgba(0,0,0,0.2)' }),
-        () => ({ y: 10 + Math.random() * 15, x: (Math.random() - 0.5) * 40, opacity: 0, rotate: 360, scale: 1.2 }) // Reduced Y
-      )
-
-    case 'smoke':
-    case 'poison':
-    case 'void_rift':
-      return (
-        <span className="absolute inset-0 pointer-events-none overflow-visible z-30">
-          {[...Array(5)].map((_, i) => ( // Increased count
-            <motion.span
-              key={i}
-              className="absolute bottom-0 left-1/2 rounded-full"
-              style={{ width: 12 + Math.random() * 8, height: 12 + Math.random() * 8, backgroundColor: baseColor, filter: 'blur(3px)' }} // Larger
-              initial={{ opacity: 0.8, scale: 0.5, y: 0, x: '-50%' }}
-              animate={{ y: -15 - Math.random() * 10, x: (Math.random() - 0.5) * 20 - 5, opacity: 0, scale: 1.8 }} // Reduced Y
-              transition={{ duration: 0.5 + Math.random() * 0.3, ease: "easeOut", delay: i * 0.03 }}
-            />
-          ))}
-        </span>
-      )
-
-    case 'bubble':
-    case 'ripple':
-      return renderParticles(6, // Increased count
-        () => ({ width: 10, height: 10, backgroundColor: 'transparent', border: `2px solid ${baseColor}`, boxShadow: `0 0 6px ${baseColor}` }), // Larger
-        () => ({ y: -15 - Math.random() * 10, x: (Math.random() - 0.5) * 25, opacity: 0, scale: 1.8 }) // Reduced Y
-      )
-
-    case 'leaf':
-      return renderParticles(6, // Increased count
-        () => ({ width: 10, height: 10, backgroundColor: ['#84cc16', '#22c55e', '#eab308'][Math.floor(Math.random() * 3)], borderRadius: '50% 0', boxShadow: '0 0 4px rgba(0,0,0,0.2)' }), // Larger
-        () => ({ y: 15 + Math.random() * 10, x: (Math.random() - 0.5) * 30, opacity: 0, rotate: 180, scale: 0.8 }) // Reduced Y
-      )
-
-    case 'snow':
-    case 'ice':
-      return renderParticles(8, // Increased count
-        () => ({ width: 6, height: 6, backgroundColor: '#e0f2fe', boxShadow: '0 0 6px #e0f2fe' }), // Larger
-        () => ({ y: 15 + Math.random() * 10, x: (Math.random() - 0.5) * 25, opacity: 0, scale: 1.3 }) // Reduced Y
-      )
-
-    case 'hearts':
-      return (
-        <span className="absolute inset-0 pointer-events-none overflow-visible flex items-center justify-center z-30">
-          {[...Array(4)].map((_, i) => (
-            <motion.svg
-              key={i}
-              viewBox="0 0 24 24"
-              fill={baseColor}
-              className="absolute w-5 h-5" // Larger size
-              style={{ filter: `drop-shadow(0 0 3px ${baseColor})` }} // Stronger shadow
-              initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
-              animate={{
-                opacity: [1, 1, 0],
-                y: -15 - Math.random() * 15, // Reduced Y range from -30..-50 to -15..-30
-                x: (Math.random() - 0.5) * 30, // Tighter X spread
-                scale: [0, 1.3, 0.9], // Slightly larger scale
-                rotate: (Math.random() - 0.5) * 45
-              }}
-              transition={{ duration: 0.7, ease: "easeOut", delay: i * 0.04 }} // Faster
-            >
-              <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-            </motion.svg>
-          ))}
-        </span>
-      )
-
-    case 'star':
-    case 'cosmic_dust':
-    case 'supernova':
-      return renderParticles(8, // Increased count
-        () => ({ width: 7, height: 7, backgroundColor: baseColor, clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)', boxShadow: `0 0 6px ${baseColor}` }), // Larger
-        () => {
-          const angle = Math.random() * Math.PI * 2
-          const dist = 15 + Math.random() * 15 // Reduced distance
-          return { y: Math.sin(angle) * dist, x: Math.cos(angle) * dist, opacity: 0, scale: 1.5 }
-        }
-      )
-
-    case 'wind':
-      return (
-        <span className="absolute inset-0 pointer-events-none overflow-visible z-30">
-          {[...Array(4)].map((_, i) => (
-            <motion.span
-              key={i}
-              className="absolute left-0 rounded-full"
-              style={{ width: 16, height: 3, backgroundColor: '#94a3b8', top: `${30 + i * 10}%`, boxShadow: '0 0 4px #94a3b8' }} // Larger
-              initial={{ opacity: 0.8, x: -8 }}
-              animate={{ x: 30, opacity: 0 }} // Reduced travel
-              transition={{ duration: 0.4, ease: "easeOut", delay: i * 0.04 }}
-            />
-          ))}
-        </span>
-      )
-
-    case 'neon':
-    case 'aurora_trail':
-    case 'galaxy_trail':
-      const neonColors = ['#e879f9', '#22d3ee', '#a855f7', '#f472b6']
-      return renderParticles(8, // Increased count
-        (i) => ({ width: 8, height: 8, backgroundColor: neonColors[i % neonColors.length], boxShadow: `0 0 10px ${neonColors[i % neonColors.length]}, 0 0 20px ${neonColors[i % neonColors.length]}` }), // Larger/Brighter
-        () => ({ y: -10 - Math.random() * 15, x: (Math.random() - 0.5) * 30, opacity: 0, scale: 1.8 }) // Reduced Y
-      )
-
-    case 'shadow':
-      return (
-        <span className="absolute inset-0 pointer-events-none overflow-visible z-30">
-          <motion.span
-            className="absolute inset-0 rounded bg-gray-800/60"
-            initial={{ opacity: 0.6, scale: 1 }}
-            animate={{ opacity: 0, scale: 1.4 }} // Reduced scale to ensure visibility of center
-            transition={{ duration: 0.4, ease: "easeOut" }}
-          />
-        </span>
-      )
-
-    case 'crystal':
-      return renderParticles(6, // Increased count
-        () => ({ width: 10, height: 10, backgroundColor: '#c4b5fd', clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', boxShadow: '0 0 6px #c4b5fd' }), // Larger
-        () => ({ y: -15 - Math.random() * 10, x: (Math.random() - 0.5) * 25, opacity: 0, rotate: 45, scale: 1.3 }) // Reduced Y
-      )
-
-    case 'spirit':
-      return renderParticles(5, // Increased count
-        () => ({ width: 12, height: 16, backgroundColor: '#22d3ee', borderRadius: '50% 50% 30% 30%', boxShadow: '0 0 10px #22d3ee' }), // Larger
-        () => ({ y: -20 - Math.random() * 10, x: (Math.random() - 0.5) * 15, opacity: 0, scale: 0.8 }) // Reduced Y
-      )
-
-    case 'divine_light':
-    case 'godray':
-      return (
-        <span className="absolute inset-0 pointer-events-none overflow-visible z-30">
-          {[...Array(6)].map((_, i) => ( // Increased count
-            <motion.span
-              key={i}
-              className="absolute top-0 left-1/2"
-              style={{ width: 3, height: 24, backgroundColor: '#fef3c7', boxShadow: '0 0 12px #fef3c7', marginLeft: (i - 2.5) * 5 }} // Larger
-              initial={{ opacity: 0.9, y: -10 }}
-              animate={{ y: 8, opacity: 0 }} // Reduced travel
-              transition={{ duration: 0.4, ease: "easeOut", delay: i * 0.03 }}
-            />
-          ))}
-        </span>
-      )
-
-    case 'reality_tear':
-      return (
-        <span className="absolute inset-0 pointer-events-none overflow-visible flex items-center justify-center z-30">
-          <motion.span
-            className="absolute w-16 h-16" // Larger
-            style={{ background: `radial-gradient(circle, ${baseColor} 0%, transparent 70%)` }}
-            initial={{ opacity: 0.8, scale: 0.4 }}
-            animate={{ opacity: 0, scale: 1.8 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-          />
-        </span>
-      )
-
-    case 'singularity':
-      return (
-        <span className="absolute inset-0 pointer-events-none overflow-visible flex items-center justify-center z-30">
-          <motion.span
-            className="absolute w-10 h-10 rounded-full bg-gray-900" // Larger
-            style={{ boxShadow: 'inset 0 0 10px rgba(255,255,255,0.1), 0 0 20px #18181b' }}
-            initial={{ opacity: 0.9, scale: 0.3 }}
-            animate={{ opacity: 0, scale: 1.4 }}
-            transition={{ duration: 0.5, ease: "easeIn" }}
-          />
-        </span>
-      )
-
-    default:
-      return renderParticles(10,
-        () => ({ width: 10, height: 10, backgroundColor: baseColor, boxShadow: `0 0 12px ${baseColor}` }),
-        () => ({ y: -20 - Math.random() * 15, x: (Math.random() - 0.5) * 40, opacity: 0, scale: 1.6 })
-      )
-  }
 })
 
 

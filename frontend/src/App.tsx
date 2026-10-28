@@ -33,30 +33,71 @@
  * components: UI Components.
  */
 
-import { useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { MotionConfig } from 'framer-motion'
+import { Helmet } from 'react-helmet-async'
 import { useAuthStore } from './stores/authStore'
 import { useConnectionStore } from './stores/connectionStore'
 import { useInventoryStore } from './stores/inventoryStore'
+import { useGameStore } from './stores/gameStore'
 import { WebSocketProvider } from './contexts/WebSocketContext'
 import { useDevToolsDetection } from './hooks/useDevToolsDetection'
 import Layout from './components/Layout'
 import Login from './components/Login'
-import Dashboard from './components/Dashboard'
-import Game from './components/Game'
-import InvitePage from './components/InvitePage'
 import ConnectionError from './components/ConnectionError'
 import InstallBanner from './components/InstallBanner'
 import UpdateBanner from './components/UpdateBanner'
 import CursorEffect from './components/CursorEffect'
-import FAQ from './components/FAQ'
-import TypeloVsMonkeytype from './components/compare/TypeloVsMonkeytype'
-import TypeloVsTypeRacer from './components/compare/TypeloVsTypeRacer'
+
+const Dashboard = lazy(() => import('./components/Dashboard'))
+const Game = lazy(() => import('./components/Game'))
+const InvitePage = lazy(() => import('./components/InvitePage'))
+const FAQ = lazy(() => import('./components/FAQ'))
+const TypeloVsMonkeytype = lazy(() => import('./components/compare/TypeloVsMonkeytype'))
+const TypeloVsTypeRacer = lazy(() => import('./components/compare/TypeloVsTypeRacer'))
 
 function App() {
   const { user, loading, idToken } = useAuthStore()
   const { status: connectionStatus, startHealthCheck, stopHealthCheck } = useConnectionStore()
   const { equippedEffect, fetchInventory } = useInventoryStore()
+  const { pathname } = useLocation()
+  const gameStatus = useGameStore(state => state.status)
+
+  const pageTitle = pathname.startsWith('/game/')
+    ? gameStatus === 'playing'
+      ? 'Typing race · Typelo'
+      : gameStatus === 'finished'
+        ? 'Match results · Typelo'
+        : 'Match found · Typelo'
+    : pathname === '/dashboard'
+      ? connectionStatus === 'disconnected'
+        ? 'Reconnecting · Typelo'
+        : gameStatus === 'queue' || gameStatus === 'waiting'
+          ? 'Searching · Typelo'
+          : 'Lobby · Typelo'
+      : pathname === '/faq'
+        ? 'Help · Typelo'
+        : pathname === '/compare/typelo-vs-monkeytype'
+          ? 'Typelo vs Monkeytype'
+          : pathname === '/compare/typelo-vs-typeracer'
+            ? 'Typelo vs TypeRacer'
+            : pathname.startsWith('/invite/')
+              ? 'Friend invite · Typelo'
+              : pathname === '/'
+                ? 'Sign in · Typelo'
+                : 'Typelo · Competitive typing'
+
+  const faviconPath = connectionStatus === 'disconnected'
+    ? '/favicon-offline.svg'
+    : pathname.startsWith('/game/')
+      ? '/favicon-match.svg'
+      : '/favicon.svg'
+
+  useEffect(() => {
+    const favicon = document.getElementById('app-favicon') as HTMLLinkElement | null
+    if (favicon) favicon.href = faviconPath
+  }, [faviconPath])
 
   // Anti-cheat: disabled to prevent site reload issues
   // useDevToolsDetection()
@@ -74,57 +115,66 @@ function App() {
     }
   }, [user, idToken])
 
-  // Show connection error if disconnected
-  if (connectionStatus === 'disconnected') {
-    return <ConnectionError />
-  }
-
-  // Show loading while checking connection or auth
-  if (connectionStatus === 'checking' || loading) {
+  // The backend health check must not block login or public pages.
+  if (loading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-bg-primary gap-4">
+      <main aria-busy="true" aria-labelledby="app-loading-heading" className="h-screen w-screen flex flex-col items-center justify-center bg-bg-primary gap-4">
+        <h1 id="app-loading-heading" className="sr-only">Loading Typelo</h1>
         <div className="relative">
           <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
         </div>
-        <p className="text-xs text-text-muted font-mono uppercase tracking-wider">
+        <p role="status" className="text-xs text-text-muted font-mono uppercase tracking-wider">
           {connectionStatus === 'checking' ? 'Connecting to server' : 'Loading'}
         </p>
-      </div>
+      </main>
     )
   }
 
   return (
-    <>
-      <CursorEffect effectId={equippedEffect} />
-      <WebSocketProvider>
-        <Layout>
-          <Routes>
-            <Route
-              path="/"
-              element={user ? <Navigate to="/dashboard" replace /> : <Login />}
-            />
-            <Route
-              path="/dashboard"
-              element={user ? <Dashboard /> : <Navigate to="/" replace />}
-            />
-            <Route
-              path="/game/:matchId"
-              element={user ? <Game /> : <Navigate to="/" replace />}
-            />
-            <Route
-              path="/invite/:code"
-              element={<InvitePage />}
-            />
-            <Route path="/faq" element={<FAQ />} />
-            <Route path="/compare/typelo-vs-monkeytype" element={<TypeloVsMonkeytype />} />
-            <Route path="/compare/typelo-vs-typeracer" element={<TypeloVsTypeRacer />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Layout>
-      </WebSocketProvider>
-      <InstallBanner />
-      <UpdateBanner />
-    </>
+    <MotionConfig reducedMotion="user">
+      <>
+        <Helmet>
+          <title>{pageTitle}</title>
+        </Helmet>
+        {user && connectionStatus === 'disconnected' && <ConnectionError />}
+        <CursorEffect effectId={equippedEffect} />
+        <WebSocketProvider>
+          <Layout>
+            <Suspense fallback={
+              <div role="status" aria-live="polite" className="flex min-h-[55vh] items-center justify-center gap-3 text-sm text-white/50">
+                <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border border-white/15 border-t-rose-400" />
+                Loading Typelo…
+              </div>
+            }>
+              <Routes>
+                <Route
+                  path="/"
+                  element={user ? <Navigate to="/dashboard" replace /> : <Login />}
+                />
+                <Route
+                  path="/dashboard"
+                  element={user ? <Dashboard /> : <Navigate to="/" replace />}
+                />
+                <Route
+                  path="/game/:matchId"
+                  element={user ? <Game /> : <Navigate to="/" replace />}
+                />
+                <Route
+                  path="/invite/:code"
+                  element={<InvitePage />}
+                />
+                <Route path="/faq" element={<FAQ />} />
+                <Route path="/compare/typelo-vs-monkeytype" element={<TypeloVsMonkeytype />} />
+                <Route path="/compare/typelo-vs-typeracer" element={<TypeloVsTypeRacer />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </Layout>
+        </WebSocketProvider>
+        <InstallBanner />
+        <UpdateBanner />
+      </>
+    </MotionConfig>
   )
 }
 

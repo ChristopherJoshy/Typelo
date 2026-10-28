@@ -131,7 +131,7 @@ export default function InventoryModal({ isOpen, onClose }: InventoryModalProps)
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
-                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm typelo-modal-backdrop"
                     />
 
                     {/* Modal Container */}
@@ -140,14 +140,14 @@ export default function InventoryModal({ isOpen, onClose }: InventoryModalProps)
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9, y: 30 }}
                         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                        className="relative w-full max-w-4xl h-[85vh] bg-[#0A0A0A] border border-white/[0.05] rounded-3xl overflow-hidden shadow-2xl flex flex-col z-10"
+                        className="relative w-full max-w-4xl h-[85vh] bg-[#0A0A0A] border border-white/[0.05] rounded-3xl overflow-hidden shadow-2xl flex flex-col z-10 typelo-modal-surface"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
                         <div className="flex-none px-8 py-6 border-b border-white/[0.05] bg-[#0A0A0A]/50 backdrop-blur-xl flex items-center justify-between z-20">
                             <div className="flex items-center gap-4">
-                                <div className="p-2.5 rounded-xl bg-gradient-to-br from-cyan-500/10 to-blue-600/10 border border-cyan-500/20">
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cyan-400">
+                                <div className="rounded-lg border border-white/10 bg-white/[0.04] p-2.5">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-rose-300">
                                         <path d="M20 7h-9M20 11h-9M14 15H4M14 19H4" />
                                         <rect x="4" y="7" width="4" height="4" rx="1" />
                                     </svg>

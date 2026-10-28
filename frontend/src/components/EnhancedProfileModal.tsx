@@ -49,7 +49,8 @@ import { API_ENDPOINTS, apiFetch, getUserMatches } from '../config/api'
 import { getRankColor, getRankFromElo, getProfileBackgroundInfo, getProfileBorderInfo, getProfileEffectInfo } from '../types'
 import SparklineChart from './SparklineChart'
 import RankBadge from './icons/RankBadge'
-import AvatarDecoration, { EFFECT_TO_DECORATION, BORDER_TO_DECORATION } from './AvatarDecoration'
+import AvatarDecoration, { BORDER_TO_DECORATION } from './AvatarDecoration'
+import ProfileEffectFrame from './ProfileEffectFrame'
 
 interface MatchHistoryEntry {
     match_id: string
@@ -206,7 +207,7 @@ export default function EnhancedProfileModal({
             {isOpen && (
                 <>
                     <motion.div
-                        className="fixed inset-0 bg-black/85 backdrop-blur-lg z-50"
+                        className="fixed inset-0 z-50 typelo-modal-backdrop"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -220,106 +221,19 @@ export default function EnhancedProfileModal({
                         exit={{ opacity: 0 }}
                     >
                         <motion.div
-                            className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl"
+                            className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl typelo-modal-surface"
                             initial={{ scale: 0.95, y: 20 }}
                             animate={{ scale: 1, y: 0 }}
                             exit={{ scale: 0.95, y: 20 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 400 }}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            {/* Effect glow border around entire card - Premium Discord-style */}
-                            {effectInfo && (() => {
-                                const getAnimationStyle = (anim: string) => {
-                                    const animationMap: Record<string, string> = {
-                                        'glow': 'profile-border-glow 2.5s ease-in-out infinite',
-                                        'pulse': 'profile-border-pulse 2s ease-in-out infinite',
-                                        'sparkle': 'profile-border-sparkle 3s linear infinite',
-                                        'shimmer': 'profile-border-sparkle 2.5s ease-in-out infinite',
-                                        'fade': 'profile-border-glow 3s ease-in-out infinite',
-                                        'wave': 'profile-border-aurora 4s ease-in-out infinite',
-                                        'float': 'profile-border-aurora 3s ease-in-out infinite',
-                                        'blink': 'profile-border-electric 2s linear infinite',
-                                        'rotate': 'profile-border-galaxy 8s linear infinite',
-                                        'scale': 'profile-border-pulse 2.5s ease-in-out infinite',
-                                        'bounce': 'profile-border-pulse 1.5s ease-in-out infinite',
-                                        'sway': 'profile-border-aurora 3.5s ease-in-out infinite',
-                                        'particles': 'profile-border-sparkle 2s ease-in-out infinite',
-                                        'rings': 'profile-border-plasma 3s ease-in-out infinite',
-                                        'lightning': 'profile-border-electric 1.5s linear infinite',
-                                        'fire': 'profile-border-fire 2s ease-in-out infinite',
-                                        'firestorm': 'profile-border-fire 1.5s ease-in-out infinite',
-                                        'crystals': 'profile-border-crystal 3s ease-in-out infinite',
-                                        'smoke': 'profile-border-glow 4s ease-in-out infinite',
-                                        'glitch': 'profile-border-electric 0.8s linear infinite',
-                                        'matrix': 'profile-border-neon 2s ease-in-out infinite',
-                                        'neon': 'profile-border-neon 3s ease-in-out infinite',
-                                        'pixels': 'profile-border-electric 1.2s linear infinite',
-                                        'plasma': 'profile-border-plasma 3s ease-in-out infinite',
-                                        'warp': 'profile-border-rift 4s ease-in-out infinite',
-                                        'sphere': 'profile-border-pulse 2.5s ease-in-out infinite',
-                                        'aurora': 'profile-border-aurora 4s ease-in-out infinite',
-                                        'shatter': 'profile-border-crystal 2s ease-in-out infinite',
-                                        'thunder': 'profile-border-electric 1s linear infinite',
-                                        'shadow': 'profile-border-void 3s ease-in-out infinite',
-                                        'supernova': 'profile-border-supernova 4s ease-in-out infinite',
-                                        'void': 'profile-border-void 3s ease-in-out infinite',
-                                        'galaxy': 'profile-border-galaxy 6s linear infinite',
-                                        'phoenix': 'profile-border-phoenix 3s ease-in-out infinite',
-                                        'divine': 'profile-border-halo 4s linear infinite',
-                                        'cosmic': 'profile-border-galaxy 5s linear infinite',
-                                        'reality': 'profile-border-rift 3s ease-in-out infinite',
-                                        'timewarp': 'profile-border-quantum 2s linear infinite',
-                                        'singularity': 'profile-border-void 4s ease-in-out infinite',
-                                        'transcendence': 'profile-border-halo 5s linear infinite',
-                                        'halo': 'profile-border-halo 4s linear infinite',
-                                        'rift': 'profile-border-rift 3s ease-in-out infinite',
-                                        'quantum': 'profile-border-quantum 2.5s linear infinite',
-                                        'dragon': 'profile-border-dragon 2.5s ease-in-out infinite',
-                                        'crystal': 'profile-border-crystal 3s ease-in-out infinite',
-                                        'ice': 'profile-border-ice 3s ease-in-out infinite',
-                                        'electric': 'profile-border-electric 1.5s linear infinite',
-                                        'rainbow': 'profile-border-rainbow 4s linear infinite'
-                                    };
-                                    return animationMap[anim] || 'profile-border-glow 2.5s ease-in-out infinite';
-                                };
-
-                                const isRainbow = effectInfo.color === 'rainbow';
-                                const gradientBg = isRainbow
-                                    ? 'linear-gradient(135deg, #ff0080, #ff8c00, #40e0d0, #8b5cf6, #ff0080)'
-                                    : `linear-gradient(135deg, ${effectInfo.color}, ${effectInfo.color}90, ${effectInfo.color}60, ${effectInfo.color}90, ${effectInfo.color})`;
-
-                                return (
-                                    <div
-                                        className="absolute -inset-[6px] rounded-2xl"
-                                        style={{
-                                            background: gradientBg,
-                                            backgroundSize: isRainbow ? '300% 300%' : undefined,
-                                            animation: getAnimationStyle(effectInfo.animation),
-                                            opacity: 1
-                                        }}
-                                    />
-                                );
-                            })()}
-                            <div className="relative"></div>
-                            {equippedProfileEffect && (
-                                <div className="absolute inset-0 pointer-events-none z-20">
-                                    <AvatarDecoration
-                                        decorationType={EFFECT_TO_DECORATION[equippedProfileEffect] || 'default'}
-                                        animate={true}
-                                        className="w-full h-full"
-                                    />
-                                </div>
-                            )}
+                            {effectInfo && <ProfileEffectFrame effect={effectInfo} />}
                             <div
-                                className="relative rounded-2xl overflow-hidden"
+                                className="relative z-10 rounded-2xl overflow-hidden"
                                 style={{
                                     background: 'linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%)',
-                                    border: effectInfo
-                                        ? `2px solid ${effectInfo.color}70`
-                                        : '1px solid rgba(255,255,255,0.08)',
-                                    boxShadow: effectInfo
-                                        ? `0 0 30px ${effectInfo.color}50, inset 0 1px 1px ${effectInfo.color}30`
-                                        : undefined
+                                    border: '1px solid rgba(255,255,255,0.08)',
                                 }}
                             >
                                 {/* Equipped Background with blur */}
@@ -334,33 +248,6 @@ export default function EnhancedProfileModal({
                                 )}
 
                                 <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0d0d0d]/80 to-[#0d0d0d]" />
-
-                                {/* Effect color overlay inside card - Enhanced */}
-                                {effectInfo && (() => {
-                                    const isRainbow = effectInfo.color === 'rainbow';
-                                    const colorVal = isRainbow ? '#ec4899' : effectInfo.color;
-                                    const getInnerAnimation = (anim: string) => {
-                                        if (['pulse', 'scale', 'bounce', 'sphere'].includes(anim)) {
-                                            return 'profile-inner-pulse 3s ease-in-out infinite';
-                                        }
-                                        if (['sparkle', 'shimmer', 'particles', 'crystals', 'pixels', 'shatter'].includes(anim)) {
-                                            return 'profile-inner-sparkle 2.5s ease-in-out infinite';
-                                        }
-                                        return 'profile-inner-glow 3s ease-in-out infinite';
-                                    };
-                                    return (
-                                        <>
-                                            <div
-                                                className="absolute inset-0 pointer-events-none"
-                                                style={{
-                                                    background: `radial-gradient(ellipse at top, ${colorVal}30 0%, transparent 50%), radial-gradient(ellipse at bottom, ${colorVal}25 0%, transparent 60%)`,
-                                                    animation: getInnerAnimation(effectInfo.animation)
-                                                }}
-                                            />
-                                            {/* (Moved AvatarDecoration outside) */}
-                                        </>
-                                    );
-                                })()}
 
                                 <div className="relative z-10 overflow-y-auto max-h-[90vh] custom-scrollbar">
                                     <button
@@ -403,11 +290,7 @@ export default function EnhancedProfileModal({
                                                             <div
                                                                 className="relative w-20 h-20 sm:w-28 sm:h-28 rounded-full overflow-hidden shadow-lg"
                                                                 style={{
-                                                                    boxShadow: effectInfo?.color
-                                                                        ? `0 0 30px ${effectInfo.color}60, 0 4px 20px rgba(0,0,0,0.3)`
-                                                                        : borderInfo?.color
-                                                                            ? `0 4px 20px ${borderInfo.color}40`
-                                                                            : '0 4px 20px rgba(249, 115, 22, 0.2)'
+                                                                    boxShadow: borderInfo?.color ? `0 2px 12px ${borderInfo.color}25` : undefined
                                                                 }}
                                                             >
                                                                 {user?.photoURL ? (

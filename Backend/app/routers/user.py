@@ -38,7 +38,7 @@
 # app.routers.auth: auth dependency.
 
 from fastapi import APIRouter, HTTPException, Depends, Path, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone
 import logging
@@ -98,6 +98,40 @@ class MatchHistoryResponse(BaseModel):
     total_matches: int
     page: int
     limit: int
+
+
+class SeenUpdateRequest(BaseModel):
+    version: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9._-]+$")
+
+
+@router.get("/updates/seen")
+async def get_update_seen(
+    version: str = Query(..., min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9._-]+$"),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Return whether this user has dismissed a specific What's New version."""
+    db = Database.get_db()
+    user = await db.users.find_one(
+        {"firebase_uid": current_user.uid},
+        {"seen_updates": 1},
+    )
+    return {"seen": bool(user and version in user.get("seen_updates", []))}
+
+
+@router.post("/updates/seen")
+async def mark_update_seen(
+    request: SeenUpdateRequest,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Remember a dismissed What's New version on the authenticated user."""
+    db = Database.get_db()
+    result = await db.users.update_one(
+        {"firebase_uid": current_user.uid},
+        {"$addToSet": {"seen_updates": request.version}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"seen": True}
 
 
 @router.get("/profile", response_model=UserProfile)

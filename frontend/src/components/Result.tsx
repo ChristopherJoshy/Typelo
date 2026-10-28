@@ -131,20 +131,19 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
   const isRankUp = rankAfter !== rankBefore && eloChange > 0
 
   const containerVariants = {
-    hidden: { opacity: 0, scale: 0.95 },
+    hidden: { opacity: 0 },
     visible: {
       opacity: 1,
-      scale: 1,
       transition: {
-        duration: 0.5,
+        duration: 0.25,
         when: "beforeChildren",
-        staggerChildren: 0.1
+        staggerChildren: 0.04
       }
     }
   }
 
   const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
+    hidden: { opacity: 0, y: 4 },
     visible: { opacity: 1, y: 0 }
   }
 
@@ -155,63 +154,23 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="relative isolate mx-auto flex min-h-full w-full max-w-6xl flex-col justify-center overflow-hidden px-4 py-8 sm:px-6 md:py-10"
+      className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col justify-center px-4 py-5 sm:px-6 sm:py-8"
     >
-      {/* Minimal edge color bleed - subtle gradient from edges */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        {/* Top edge bleed */}
-        <div
-          className="absolute top-0 left-0 right-0 h-[300px]"
-          style={{
-            background: isWin
-              ? 'linear-gradient(to bottom, rgba(34, 197, 94, 0.08) 0%, transparent 100%)'
-              : isTie
-                ? 'linear-gradient(to bottom, rgba(100, 100, 100, 0.05) 0%, transparent 100%)'
-                : 'linear-gradient(to bottom, rgba(239, 68, 68, 0.06) 0%, transparent 100%)'
-          }}
-        />
-        <div
-          className="absolute left-1/2 top-24 h-72 w-72 -translate-x-1/2 rounded-full blur-[110px]"
-          style={{ background: isWin ? 'rgba(52, 211, 153, 0.08)' : isTie ? 'rgba(148, 163, 184, 0.05)' : 'rgba(251, 113, 133, 0.08)' }}
-        />
-        {/* Left edge accent */}
-        <div
-          className="absolute top-0 left-0 bottom-0 w-1"
-          style={{
-            background: isWin
-              ? 'linear-gradient(to bottom, rgba(34, 197, 94, 0.4) 0%, rgba(34, 197, 94, 0.1) 50%, transparent 100%)'
-              : isTie
-                ? 'linear-gradient(to bottom, rgba(100, 100, 100, 0.2) 0%, transparent 100%)'
-                : 'linear-gradient(to bottom, rgba(214, 37, 37, 0.4) 0%, rgba(239, 68, 68, 0.1) 50%, transparent 100%)'
-          }}
-        />
-      </div>
-
-      {/* Result Header - Minimal Clean Design - No Glows */}
       <motion.div
         variants={itemVariants}
-        className="relative z-10 mb-7 text-center md:mb-9"
+        className="mb-5 text-center sm:mb-7"
       >
-        {/* Small status text */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-white/55"
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${isWin ? 'bg-emerald-400' : isTie ? 'bg-slate-400' : 'bg-rose-400'}`} />
-          {isTraining ? 'Training Complete' : 'Match Complete'}
-        </motion.p>
+        <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-white/45">
+          {isTraining ? 'Training' : isFriends ? 'Friends match' : 'Ranked match'}
+        </p>
 
-        {/* Main Result Text - Pure Typography */}
         <motion.h2
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="bg-clip-text text-5xl font-bold tracking-[-0.055em] text-transparent md:text-7xl"
-          style={{ backgroundImage: isWin ? 'linear-gradient(100deg, #6ee7b7, #34d399 55%, #a7f3d0)' : isTie ? 'linear-gradient(100deg, #cbd5e1, #94a3b8)' : 'linear-gradient(100deg, #fda4af, #fb7185 55%, #fecdd3)' }}
+          transition={{ duration: 0.25 }}
+          className={`text-4xl font-semibold tracking-tight sm:text-5xl ${isWin ? 'text-emerald-300' : isTie ? 'text-white/80' : 'text-rose-300'}`}
         >
-          {isWin ? 'Victory.' : isTie ? 'A close draw.' : 'Match complete.'}
+          {isWin ? 'Victory' : isTie ? 'Draw' : 'Defeat'}
         </motion.h2>
 
         {/* Your Elo Change - Minimal */}
@@ -235,52 +194,10 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
-            className="mt-2 flex items-center justify-center gap-2"
+            className="mt-2 flex items-center justify-center gap-2 text-sm"
           >
-            <div className="w-5 h-5 rounded-full bg-yellow-400/20 flex items-center justify-center border border-yellow-400/50">
-              <div className="w-3 h-3 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_10px_rgba(250,204,21,0.5)]" />
-            </div>
-
-            {result.baseCoins && result.baseCoins < result.coinsEarned ? (
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-lg text-white/40 line-through tracking-wide decoration-white/40 decoration-2">
-                  +{result.baseCoins}
-                </span>
-                <span className="font-mono text-xl text-yellow-400 tracking-wide font-bold">
-                  +{result.coinsEarned} Coins
-                </span>
-
-                {(result.rankBonusCoins || 0) > 0 && (
-                  <motion.div
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.8, type: 'spring' }}
-                    className="flex items-center gap-1 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30 rounded px-2 py-0.5"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-yellow-400">
-                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                    </svg>
-                    <span className="text-[10px] font-bold text-yellow-200 uppercase tracking-wider">Rank Boost</span>
-                  </motion.div>
-                )}
-
-                {(result.leaderboardBonusCoins || 0) > 0 && (
-                  <motion.div
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.9, type: 'spring' }}
-                    className="flex items-center gap-1 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 rounded px-2 py-0.5"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-purple-400">
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                    </svg>
-                    <span className="text-[10px] font-bold text-purple-200 uppercase tracking-wider">Leaderboard</span>
-                  </motion.div>
-                )}
-              </div>
-            ) : (
-              <span className="font-mono text-lg text-yellow-400 tracking-wide">+{result.coinsEarned} Coins</span>
-            )}
+            <span aria-hidden="true" className="text-rose-300">◉</span>
+            <span className="font-mono font-semibold tabular-nums text-white">+{result.coinsEarned} coins</span>
           </motion.div>
         )}
       </motion.div>
@@ -288,7 +205,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
       {/* Main Stats Card - Minimal Transparent */}
       <motion.div
         variants={itemVariants}
-        className="relative z-10 mx-auto w-full max-w-4xl rounded-3xl border border-white/[0.09] bg-[#0a0b0f]/75 p-2 shadow-[0_24px_90px_rgba(0,0,0,0.35)] backdrop-blur-md sm:p-4"
+        className="mx-auto w-full max-w-4xl rounded-2xl border border-white/[0.08] bg-[#08090b] p-2 sm:p-4"
       >
         {/* Main card - No background, just clean layout */}
         <div className="relative">
@@ -300,7 +217,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
               {/* Player (Left) */}
               <div className="flex flex-col items-start gap-3">
                 <div className="relative">
-                  <div className={`w-20 h-20 rounded-full border ${isWin ? 'border-emerald-400/80 shadow-[0_0_24px_rgba(52,211,153,0.12)]' : 'border-white/15'} p-1`}>
+                  <div className={`h-16 w-16 rounded-full border ${isWin ? 'border-emerald-400/60' : 'border-white/15'} p-1`}>
                     {user?.photoURL ? (
                       <img src={user.photoURL} alt="You" className="w-full h-full rounded-full object-cover" crossOrigin="anonymous" referrerPolicy="no-referrer" />
                     ) : (
@@ -335,7 +252,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
               {/* Opponent (Right) */}
               <div className="flex flex-col items-end gap-3 text-right">
                 <div className="relative">
-                  <div className={`w-20 h-20 rounded-full border ${!isWin && !isTie ? 'border-emerald-400/80 shadow-[0_0_24px_rgba(52,211,153,0.12)]' : 'border-white/15'} p-1`}>
+                  <div className={`h-16 w-16 rounded-full border ${!isWin && !isTie ? 'border-emerald-400/60' : 'border-white/15'} p-1`}>
                     {result.opponentPhotoURL && !result.opponentIsBot ? (
                       <img src={result.opponentPhotoURL} alt={result.opponentDisplayName} className="w-full h-full rounded-full object-cover" crossOrigin="anonymous" referrerPolicy="no-referrer" />
                     ) : (
@@ -484,14 +401,14 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
       {/* Action Buttons - Minimal Outlines */}
       <motion.div
         variants={itemVariants}
-        className="relative z-10 mt-8 flex items-center justify-center gap-3 pb-4 sm:mt-9 sm:gap-4"
+        className="mt-5 flex items-center justify-center gap-2 pb-2 sm:mt-7 sm:gap-3"
       >
         <button
           onClick={() => {
             useGameStore.getState().reset()
             navigate('/dashboard')
           }}
-          className="rounded-lg px-5 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-white/55 transition-colors hover:bg-white/5 hover:text-white"
+          className="rounded-lg px-4 py-3 text-sm text-white/50 transition-colors hover:bg-white/[0.04] hover:text-white"
         >
           Dashboard
         </button>
@@ -512,7 +429,7 @@ export default function Result({ result, onPlayAgain, keyStats }: ResultProps) {
               navigate('/dashboard');
             }, 500);
           }}
-          className="flex items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.07] px-6 py-3 text-sm font-semibold uppercase tracking-[0.15em] text-emerald-300 shadow-[0_8px_30px_rgba(16,185,129,0.08)] transition-all hover:border-emerald-300/50 hover:bg-emerald-400/[0.12]"
+          className="flex items-center gap-2 rounded-xl border border-rose-400/30 bg-rose-400/[0.08] px-5 py-3 text-sm font-medium text-rose-200 transition-colors hover:border-rose-300/50 hover:bg-rose-400/[0.14]"
         >
           {isTraining ? 'Train Again' : 'Play Again'}
           <span className="text-[10px] opacity-40 border border-current px-1 rounded">R</span>

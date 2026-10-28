@@ -115,7 +115,7 @@ export function Modal({
         <div className="fixed inset-0 z-modal">
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+                className="absolute inset-0 animate-fade-in typelo-modal-backdrop"
                 onClick={closeOnBackdropClick ? onClose : undefined}
                 aria-hidden="true"
             />
@@ -136,6 +136,7 @@ export function Modal({
             rounded-2xl shadow-2xl
             animate-scale-in
             focus:outline-none
+            typelo-modal-surface
             ${className}
           `}
                     onClick={(e) => e.stopPropagation()}

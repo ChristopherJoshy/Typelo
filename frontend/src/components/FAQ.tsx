@@ -50,7 +50,6 @@ export default function FAQ() {
     return (
         <>
             <SEOHead
-                title="FAQ"
                 description="Frequently asked questions about Typelo, the real-time 1v1 competitive typing game. Find answers about gameplay, ranking, friends, and more."
                 path="/faq"
             />

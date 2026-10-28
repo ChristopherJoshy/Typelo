@@ -67,7 +67,7 @@ export default {
         'text': {
           primary: '#FFFFFF',
           secondary: '#A1A1A1',
-          muted: '#525252',
+          muted: '#858585',
           disabled: '#3F3F3F',
         },
 

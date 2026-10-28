@@ -50,7 +50,7 @@ export default function RanksModal({ isOpen, onClose, currentRank }: RanksModalP
         <>
           {/* Backdrop */}
           <motion.div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            className="fixed inset-0 z-50 typelo-modal-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -65,7 +65,7 @@ export default function RanksModal({ isOpen, onClose, currentRank }: RanksModalP
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="bg-bg-secondary/95 border border-white/10 backdrop-blur-xl rounded-2xl w-full max-w-md overflow-hidden"
+              className="bg-bg-secondary/95 border border-white/10 backdrop-blur-xl rounded-2xl w-full max-w-md overflow-hidden typelo-modal-surface"
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}

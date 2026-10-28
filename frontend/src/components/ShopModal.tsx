@@ -42,7 +42,7 @@
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { motion, AnimatePresence, useAnimation } from 'framer-motion'
+import { motion, AnimatePresence, useAnimation, useReducedMotion } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { useInventoryStore, SPIN_COST, PROFILE_SPIN_COST } from '../stores/inventoryStore'
 import { useAuthStore } from '../stores/authStore'
@@ -60,8 +60,8 @@ import profileCrateImg from '../assets/profile_crate.png'
 
 const ITEM_WIDTH = 120
 const VISIBLE_ITEMS = 5
-const ITEMS_BEFORE_WINNER = 60
-const ANIMATION_DURATION = 6
+const ITEMS_BEFORE_WINNER = 36
+const ANIMATION_DURATION = 3.8
 
 interface SpinItem {
     type: 'cursor' | 'coins' | 'effect' | 'background' | 'profile_effect' | 'border' | 'nothing' | 'unknown'
@@ -93,6 +93,7 @@ const EffectIcon = ({ color, size = 40 }: { color: string; size?: number }) => (
 )
 
 export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
+    const reduceMotion = useReducedMotion()
     const { idToken } = useAuthStore()
     const {
         coins, fetchInventory, spin, pityActive, pityStreak, cratesOpened,
@@ -198,9 +199,10 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                 const containerRect = containerRef.current?.getBoundingClientRect()
                 const winnerRect = winnerCardRef.current?.getBoundingClientRect()
                 const containerWidth = containerRect?.width || ITEM_WIDTH * VISIBLE_ITEMS
+                const responsiveItemWidth = Math.min(120, Math.max(72, window.innerWidth * 0.2))
                 const targetX = containerRect && winnerRect
                     ? containerWidth / 2 - (winnerRect.left - containerRect.left + winnerRect.width / 2)
-                    : -(ITEMS_BEFORE_WINNER * ITEM_WIDTH) + (containerWidth / 2 - ITEM_WIDTH / 2)
+                    : -(ITEMS_BEFORE_WINNER * responsiveItemWidth) + (containerWidth / 2 - responsiveItemWidth / 2)
 
                 // Start tick sounds
                 let tickCount = 0
@@ -214,16 +216,20 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                         tickIntervalRef.current = setTimeout(scheduleNextTick, nextDelay)
                     }
                 }
-                scheduleNextTick()
+                if (!reduceMotion) scheduleNextTick()
 
                 // Start roll animation
-                await controls.start({
-                    x: targetX,
-                    transition: {
-                        duration: ANIMATION_DURATION,
-                        ease: [0.15, 0.85, 0.35, 1.0]
-                    }
-                })
+                if (reduceMotion) {
+                    await controls.set({ x: targetX })
+                } else {
+                    await controls.start({
+                        x: targetX,
+                        transition: {
+                            duration: ANIMATION_DURATION,
+                            ease: [0.12, 0.78, 0.22, 1]
+                        }
+                    })
+                }
                 if (cancelled) return
 
                 // Animation Complete
@@ -259,7 +265,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
             cancelled = true
             if (tickIntervalRef.current) clearTimeout(tickIntervalRef.current)
         }
-    }, [phase, controls, displayItems, activeRollType, idToken, fetchInventory, fetchProfileInventory, playTickSound, playWinSound, containerRef])
+    }, [phase, controls, displayItems, activeRollType, idToken, fetchInventory, fetchProfileInventory, playTickSound, playWinSound, containerRef, reduceMotion])
 
     useEffect(() => {
         if (!isOpen) {
@@ -353,6 +359,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
         const cost = leaderboardBonus?.profileDiscountedCost ?? PROFILE_SPIN_COST
         if (!idToken || coins < cost || isSpinning) return
 
+        unlockAudio()
         setIsSpinning(true)
         if (tickIntervalRef.current) clearTimeout(tickIntervalRef.current)
 
@@ -450,7 +457,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
+                    className="fixed inset-0 z-[300] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm typelo-modal-backdrop"
                     onClick={() => phase === 'crates' && onClose()}
                 >
                     <motion.div
@@ -459,7 +466,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                         exit={{ scale: 0.95, opacity: 0 }}
                         onClick={(e) => e.stopPropagation()}
                         role="dialog" aria-modal="true" aria-label="Cosmetic shop"
-                        className="relative w-full max-w-2xl overflow-hidden rounded-3xl bg-[#111218] border border-white/10 shadow-[0_28px_100px_rgba(0,0,0,0.65)]"
+                        className="relative max-h-[90dvh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-[#0b0b0c] shadow-xl typelo-modal-surface"
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between px-5 md:px-7 py-4 md:py-5 border-b border-white/[0.07] bg-white/[0.02]">
@@ -467,16 +474,16 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-purple-400 md:w-6 md:h-6">
                                     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
                                 </svg>
-                                <h2 className="text-base md:text-lg font-semibold tracking-tight text-white">The crate shop</h2>
+                                <h2 className="text-base font-semibold tracking-tight text-white">Shop</h2>
                                 {/* OPENED counter - desktop only, inline with title */}
                                 <span className="hidden md:inline text-[10px] text-white/40 font-mono ml-2">
                                     OPENED: <span className="text-white/80">{cratesOpened}</span>
                                 </span>
                             </div>
                             <div className="flex items-center gap-2 md:gap-4">
-                                <div className="flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 rounded-full bg-white/5 border border-white/10">
-                                    <span className="text-yellow-400 text-xs md:text-sm font-bold">{coins}</span>
-                                    <span className="text-white/40 text-[10px] md:text-xs">coins</span>
+                                <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-1.5">
+                                    <span className="font-mono text-xs font-semibold tabular-nums text-white">{coins}</span>
+                                    <span className="text-[10px] text-white/45">coins</span>
                                 </div>
                                 <button onClick={onClose} className="p-1 text-white/40 hover:text-white transition-colors">
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="md:w-5 md:h-5">
@@ -488,62 +495,50 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
 
                         {/* Phase: Crates */}
                         {phase === 'crates' && (
-                            <div className="p-4 md:p-8">
-                                {/* Always 2 columns - compact on mobile, larger on desktop */}
-                                <div className="grid grid-cols-2 gap-3 md:gap-6">
+                            <div className="p-4 md:p-6">
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
 
                                     {/* ==================== ALL IN ONE CRATE ==================== */}
                                     <motion.div
-                                        whileHover={{ y: -5 }}
-                                        className="relative group flex flex-col justify-between rounded-xl md:rounded-2xl bg-[#141414] border border-white/10 overflow-hidden"
+                                        whileHover={{ y: -2 }}
+                                        className="relative flex flex-col justify-between overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02]"
                                     >
-                                        {/* Subtle Static Background */}
-                                        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 to-[#0a0a0a]" />
-
                                         {/* Content Container */}
-                                        <div className="relative z-10 p-3 md:p-6 flex flex-col h-full">
+                                        <div className="relative z-10 flex h-full flex-col p-4">
 
                                             {/* Header Section */}
-                                            <div className="flex justify-between items-start mb-2 md:mb-6">
+                                            <div className="mb-3 flex items-start justify-between">
                                                 <div className="flex flex-col">
-                                                    <h3 className="text-sm md:text-xl font-bold text-white uppercase tracking-wider">
-                                                        Start Crate
+                                                    <h3 className="text-sm font-semibold text-white">
+                                                        Cursor crate
                                                     </h3>
-                                                    <p className="text-[8px] md:text-xs font-semibold text-white/50 uppercase tracking-wider mt-0.5 md:mt-1">Cursors & Effects</p>
-                                                </div>
-                                                <div className="px-1.5 md:px-2 py-0.5 md:py-1 rounded bg-white/10 border border-white/5 hidden md:block">
-                                                    <span className="text-[8px] md:text-[10px] font-bold text-purple-200 uppercase tracking-wider">Series 1</span>
+                                                    <p className="mt-1 text-xs text-white/45">Cursors and effects</p>
                                                 </div>
                                             </div>
 
                                             {/* Centerpiece Image - Static */}
-                                            <div className="flex-1 flex items-center justify-center py-2 md:py-4 mb-2 md:mb-6 relative">
-                                                <div className="absolute inset-0 bg-purple-500/5 blur-[40px] rounded-full" />
+                                            <div className="flex items-center justify-center py-1">
                                                 <img
                                                     src={crateImg}
-                                                    alt="Crate"
-                                                    className="w-20 h-20 md:w-40 md:h-40 object-contain z-10 drop-shadow-2xl"
+                                                    alt="Cursor crate"
+                                                    className="h-20 w-20 object-contain"
                                                 />
-                                                {/* Text Badge instead of floating element - hidden on mobile */}
-                                                <div className="absolute top-0 right-0 py-0.5 md:py-1 px-1.5 md:px-3 bg-red-500/10 border border-red-500/20 rounded-full z-20">
-                                                    <span className="text-[6px] md:text-[10px] font-bold text-red-400 uppercase tracking-widest">Popular</span>
-                                                </div>
                                             </div>
 
                                             {/* Pity Meter */}
-                                            <div className="mb-2 md:mb-6 space-y-1 md:space-y-2">
+                                            <div className="mb-4 mt-2 space-y-2">
                                                 <div className="flex justify-between items-end">
-                                                    <span className="text-[8px] md:text-[10px] font-bold text-white/40 uppercase tracking-widest">Luck</span>
-                                                    <span className={`text-[8px] md:text-[10px] font-bold uppercase tracking-wider ${pityActive ? 'text-yellow-400' : 'text-white/40'}`}>
-                                                        {pityActive ? 'MAX' : `${pityStreak}/5`}
+                                                    <span className="text-xs text-white/45">Luck protection</span>
+                                                    <span className={`font-mono text-xs tabular-nums ${pityActive ? 'text-rose-300' : 'text-white/45'}`}>
+                                                        {pityActive ? 'Ready' : `${pityStreak}/5`}
                                                     </span>
                                                 </div>
-                                                <div className="flex gap-0.5 md:gap-1 h-1.5 md:h-2">
+                                                <div className="flex h-1 gap-1">
                                                     {[...Array(5)].map((_, i) => (
-                                                        <div key={i} className="flex-1 rounded-sm bg-white/5 overflow-hidden relative">
+                                                        <div key={i} className="relative flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                                                             <div
                                                                 className={`absolute inset-0 ${pityStreak > i || pityActive
-                                                                    ? 'bg-purple-500'
+                                                                    ? 'bg-rose-400'
                                                                     : ''
                                                                     }`}
                                                             />
@@ -553,14 +548,14 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                             </div>
 
                                             {/* Action Area */}
-                                            <div className="mt-auto space-y-2 md:space-y-3">
+                                            <div className="mt-auto space-y-3">
                                                 {/* Leaderboard/Bonus Info - hidden on mobile */}
                                                 {leaderboardBonus?.isTopPlayer && (
-                                                    <div className="hidden md:flex gap-2 justify-center mb-2">
-                                                        <div className="px-2 py-0.5 rounded bg-yellow-400/10 text-[10px] text-yellow-400 font-bold border border-yellow-400/20">
+                                                    <div className="flex flex-wrap justify-center gap-2 text-[10px]">
+                                                        <div className="rounded border border-white/10 px-2 py-1 text-white/60">
                                                             -{leaderboardBonus.coinReductionPercent}% Cost
                                                         </div>
-                                                        <div className="px-2 py-0.5 rounded bg-emerald-400/10 text-[10px] text-emerald-400 font-bold border border-emerald-400/20">
+                                                        <div className="rounded border border-white/10 px-2 py-1 text-white/60">
                                                             +{leaderboardBonus.luckBonusPercent}% Luck
                                                         </div>
                                                     </div>
@@ -572,41 +567,29 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                     onClick={handleOpenCrate}
                                                     disabled={coins < (leaderboardBonus?.gachaDiscountedCost ?? SPIN_COST) || isSpinning}
                                                     className={`
-                                                        w-full overflow-hidden rounded-md md:rounded-lg font-bold uppercase tracking-widest text-xs md:text-sm shadow-xl transition-all
+                                                        w-full overflow-hidden rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors
                                                         ${coins >= (leaderboardBonus?.gachaDiscountedCost ?? SPIN_COST) && !isSpinning
-                                                            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:brightness-110'
-                                                            : 'bg-white/5 text-white/20 cursor-not-allowed'
+                                                            ? 'border-rose-400/35 bg-rose-500/10 text-rose-100 hover:bg-rose-500/15'
+                                                            : 'cursor-not-allowed border-white/[0.08] bg-white/[0.03] text-white/30'
                                                         }
                                                     `}
                                                 >
-                                                    <div className="py-2 md:py-4 flex flex-col items-center justify-center">
+                                                    <div className="flex items-center justify-center gap-2">
                                                         {isSpinning ? (
-                                                            <div className="h-4 w-4 md:h-5 md:w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                                                         ) : (
-                                                            <>
-                                                                <span className="text-[10px] md:text-sm mb-0.5">Spin</span>
-                                                                <div className="flex items-center gap-1 text-[8px] md:text-[10px] text-white/80">
-                                                                    {leaderboardBonus?.isTopPlayer ? (
-                                                                        <>
-                                                                            <span className="line-through opacity-50">{leaderboardBonus.gachaOriginalCost}</span>
-                                                                            <span className="text-yellow-300 font-bold">{leaderboardBonus.gachaDiscountedCost}</span>
-                                                                        </>
-                                                                    ) : (
-                                                                        <span>{SPIN_COST}</span>
-                                                                    )}
-                                                                </div>
-                                                            </>
+                                                            <span>Open · {leaderboardBonus?.isTopPlayer ? leaderboardBonus.gachaDiscountedCost : SPIN_COST} coins</span>
                                                         )}
                                                     </div>
                                                 </motion.button>
 
                                                 {/* Auto and Info buttons - hidden on mobile */}
-                                                <div className="hidden md:flex items-center justify-between gap-2">
+                                                <div className="flex items-center justify-between gap-2">
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setAutoSpinCursor(!autoSpinCursor) }}
-                                                        className={`flex-1 py-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border ${autoSpinCursor
-                                                            ? 'bg-purple-500/10 border-purple-500/30 text-purple-300'
-                                                            : 'bg-transparent border-white/5 text-white/30 hover:bg-white/5 hover:text-white/50'
+                                                        className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors ${autoSpinCursor
+                                                            ? 'border-rose-400/30 bg-rose-400/[0.08] text-rose-200'
+                                                            : 'border-white/[0.08] text-white/50 hover:bg-white/[0.04] hover:text-white'
                                                             }`}
                                                     >
                                                         {autoSpinCursor ? 'Auto: ON' : 'Enable Auto'}
@@ -614,7 +597,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
 
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setShowDropRates(!showDropRates) }}
-                                                        className="w-10 h-10 flex items-center justify-center rounded-lg border border-white/5 text-white/30 hover:bg-white/5 hover:text-white transition-colors"
+                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] text-white/50 transition-colors hover:bg-white/[0.04] hover:text-white"
                                                         title="View Drop Rates"
                                                     >
                                                         <span className="font-serif italic font-bold">i</span>
@@ -626,56 +609,45 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
 
                                     {/* ==================== PROFILE CRATE ==================== */}
                                     <motion.div
-                                        whileHover={{ y: -5 }}
-                                        className="relative group flex flex-col justify-between rounded-xl md:rounded-2xl bg-[#141414] border border-white/10 overflow-hidden"
+                                        whileHover={{ y: -2 }}
+                                        className="relative flex flex-col justify-between overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02]"
                                     >
-                                        {/* Subtle Static Background */}
-                                        <div className="absolute inset-0 bg-gradient-to-bl from-cyan-900/10 to-[#0a0a0a]" />
-
                                         {/* Content Container */}
-                                        <div className="relative z-10 p-3 md:p-6 flex flex-col h-full">
+                                        <div className="relative z-10 flex h-full flex-col p-4">
 
                                             {/* Header Section */}
-                                            <div className="flex justify-between items-start mb-2 md:mb-6">
+                                            <div className="mb-3 flex items-start justify-between">
                                                 <div className="flex flex-col">
-                                                    <h3 className="text-sm md:text-xl font-bold text-white uppercase tracking-wider">
+                                                    <h3 className="text-sm font-semibold text-white">
                                                         Profile Kit
                                                     </h3>
-                                                    <p className="text-[8px] md:text-xs font-semibold text-white/50 uppercase tracking-wider mt-0.5 md:mt-1">Banners & Borders</p>
-                                                </div>
-                                                <div className="px-1.5 md:px-2 py-0.5 md:py-1 rounded bg-white/10 border border-white/5 hidden md:block">
-                                                    <span className="text-[8px] md:text-[10px] font-bold text-cyan-200 uppercase tracking-wider">Cosmetics</span>
+                                                    <p className="mt-1 text-xs text-white/45">Banners and borders</p>
                                                 </div>
                                             </div>
 
                                             {/* Centerpiece Image - Static */}
-                                            <div className="flex-1 flex items-center justify-center py-2 md:py-4 mb-2 md:mb-6 relative">
-                                                <div className="absolute inset-0 bg-cyan-500/5 blur-[40px] rounded-full" />
+                                            <div className="flex items-center justify-center py-1">
                                                 <img
                                                     src={profileCrateImg}
                                                     alt="Profile Crate"
-                                                    className="w-20 h-20 md:w-40 md:h-40 object-contain z-10 drop-shadow-2xl"
+                                                    className="h-20 w-20 object-contain"
                                                 />
-                                                {/* Text Badge */}
-                                                <div className="absolute top-0 left-0 py-0.5 md:py-1 px-1.5 md:px-3 bg-blue-500/10 border border-blue-500/20 rounded-full z-20">
-                                                    <span className="text-[6px] md:text-[10px] font-bold text-blue-400 uppercase tracking-widest">Exclusive</span>
-                                                </div>
                                             </div>
 
                                             {/* Pity Meter */}
-                                            <div className="mb-2 md:mb-6 space-y-1 md:space-y-2">
+                                            <div className="mb-4 mt-2 space-y-2">
                                                 <div className="flex justify-between items-end">
-                                                    <span className="text-[8px] md:text-[10px] font-bold text-white/40 uppercase tracking-widest">Luck</span>
-                                                    <span className={`text-[8px] md:text-[10px] font-bold uppercase tracking-wider ${profilePityActive ? 'text-cyan-400' : 'text-white/40'}`}>
-                                                        {profilePityActive ? 'MAX' : `${profilePityStreak}/7`}
+                                                    <span className="text-xs text-white/45">Luck protection</span>
+                                                    <span className={`font-mono text-xs tabular-nums ${profilePityActive ? 'text-rose-300' : 'text-white/45'}`}>
+                                                        {profilePityActive ? 'Ready' : `${profilePityStreak}/7`}
                                                     </span>
                                                 </div>
-                                                <div className="flex gap-0.5 md:gap-1 h-1.5 md:h-2">
+                                                <div className="flex h-1 gap-1">
                                                     {[...Array(7)].map((_, i) => (
-                                                        <div key={i} className="flex-1 rounded-sm bg-white/5 overflow-hidden relative">
+                                                        <div key={i} className="relative flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                                                             <div
                                                                 className={`absolute inset-0 ${profilePityStreak > i || profilePityActive
-                                                                    ? 'bg-cyan-500'
+                                                                    ? 'bg-rose-400'
                                                                     : ''
                                                                     }`}
                                                             />
@@ -685,14 +657,14 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                             </div>
 
                                             {/* Action Area */}
-                                            <div className="mt-auto space-y-2 md:space-y-3">
+                                            <div className="mt-auto space-y-3">
                                                 {/* Leaderboard/Bonus Info - hidden on mobile */}
                                                 {leaderboardBonus?.isTopPlayer && (
-                                                    <div className="hidden md:flex gap-2 justify-center mb-2">
-                                                        <div className="px-2 py-0.5 rounded bg-yellow-400/10 text-[10px] text-yellow-400 font-bold border border-yellow-400/20">
+                                                    <div className="flex flex-wrap justify-center gap-2 text-[10px]">
+                                                        <div className="rounded border border-white/10 px-2 py-1 text-white/60">
                                                             -{leaderboardBonus.coinReductionPercent}% Cost
                                                         </div>
-                                                        <div className="px-2 py-0.5 rounded bg-emerald-400/10 text-[10px] text-emerald-400 font-bold border border-emerald-400/20">
+                                                        <div className="rounded border border-white/10 px-2 py-1 text-white/60">
                                                             +{leaderboardBonus.luckBonusPercent}% Luck
                                                         </div>
                                                     </div>
@@ -704,41 +676,29 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                     onClick={handleOpenProfileCrate}
                                                     disabled={coins < (leaderboardBonus?.profileDiscountedCost ?? PROFILE_SPIN_COST) || isSpinning}
                                                     className={`
-                                                        w-full overflow-hidden rounded-md md:rounded-lg font-bold uppercase tracking-widest text-xs md:text-sm shadow-xl transition-all
+                                                        w-full overflow-hidden rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors
                                                         ${coins >= (leaderboardBonus?.profileDiscountedCost ?? PROFILE_SPIN_COST) && !isSpinning
-                                                            ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white hover:brightness-110'
-                                                            : 'bg-white/5 text-white/20 cursor-not-allowed'
+                                                            ? 'border-rose-400/35 bg-rose-500/10 text-rose-100 hover:bg-rose-500/15'
+                                                            : 'cursor-not-allowed border-white/[0.08] bg-white/[0.03] text-white/30'
                                                         }
                                                     `}
                                                 >
-                                                    <div className="py-2 md:py-4 flex flex-col items-center justify-center">
+                                                    <div className="flex items-center justify-center gap-2">
                                                         {isSpinning ? (
-                                                            <div className="h-4 w-4 md:h-5 md:w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                                                         ) : (
-                                                            <>
-                                                                <span className="text-[10px] md:text-sm mb-0.5">Spin</span>
-                                                                <div className="flex items-center gap-1 text-[8px] md:text-[10px] text-white/80">
-                                                                    {leaderboardBonus?.isTopPlayer ? (
-                                                                        <>
-                                                                            <span className="line-through opacity-50">{leaderboardBonus.profileOriginalCost}</span>
-                                                                            <span className="text-yellow-300 font-bold">{leaderboardBonus.profileDiscountedCost}</span>
-                                                                        </>
-                                                                    ) : (
-                                                                        <span>{PROFILE_SPIN_COST}</span>
-                                                                    )}
-                                                                </div>
-                                                            </>
+                                                            <span>Open · {leaderboardBonus?.isTopPlayer ? leaderboardBonus.profileDiscountedCost : PROFILE_SPIN_COST} coins</span>
                                                         )}
                                                     </div>
                                                 </motion.button>
 
                                                 {/* Auto and Info buttons - hidden on mobile */}
-                                                <div className="hidden md:flex items-center justify-between gap-2">
+                                                <div className="flex items-center justify-between gap-2">
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setAutoSpinProfile(!autoSpinProfile) }}
-                                                        className={`flex-1 py-3 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border ${autoSpinProfile
-                                                            ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300'
-                                                            : 'bg-transparent border-white/5 text-white/30 hover:bg-white/5 hover:text-white/50'
+                                                        className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors ${autoSpinProfile
+                                                            ? 'border-rose-400/30 bg-rose-400/[0.08] text-rose-200'
+                                                            : 'border-white/[0.08] text-white/50 hover:bg-white/[0.04] hover:text-white'
                                                             }`}
                                                     >
                                                         {autoSpinProfile ? 'Auto: ON' : 'Enable Auto'}
@@ -746,7 +706,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
 
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setShowProfileDropRates(!showProfileDropRates) }}
-                                                        className="w-10 h-10 flex items-center justify-center rounded-lg border border-white/5 text-white/30 hover:bg-white/5 hover:text-white transition-colors"
+                                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] text-white/50 transition-colors hover:bg-white/[0.04] hover:text-white"
                                                         title="View Drop Rates"
                                                     >
                                                         <span className="font-serif italic font-bold">i</span>
@@ -765,7 +725,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                             initial={{ opacity: 0, scale: 0.95 }}
                                             animate={{ opacity: 1, scale: 1 }}
                                             exit={{ opacity: 0, scale: 0.95 }}
-                                            className="absolute inset-x-8 top-1/2 -translate-y-1/2 p-6 rounded-2xl bg-[#0f0f0f]/95 backdrop-blur-xl border border-white/10 shadow-2xl z-50 ring-1 ring-white/5"
+                                            className="absolute inset-x-4 top-1/2 z-50 max-h-[75dvh] -translate-y-1/2 overflow-y-auto rounded-xl border border-white/10 bg-[#0b0b0c] p-4 shadow-xl sm:inset-x-8 sm:p-5"
                                         >
                                             <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-4">
                                                 <div>
@@ -822,18 +782,16 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                         )}{/* Phase: Rolling */}
                         {
                             phase === 'rolling' && (
-                                <div className="py-8">
+                                <div className="py-6">
                                     {/* Center Marker */}
                                     <div className="relative">
-                                        <div className="absolute left-1/2 -translate-x-1/2 top-0 bottom-0 w-[3px] bg-yellow-400 z-20 shadow-lg shadow-yellow-400/50" />
-                                        <div className="absolute left-1/2 -translate-x-1/2 -top-2 w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[10px] border-t-yellow-400 z-20" />
-                                        <div className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[10px] border-b-yellow-400 z-20" />
+                                        <div aria-hidden="true" className="absolute bottom-0 left-1/2 top-0 z-20 w-px -translate-x-1/2 bg-rose-400" />
 
                                         {/* Rolling Strip */}
-                                        <div ref={containerRef} className="relative overflow-hidden mx-auto rounded-lg bg-[#111] border border-white/10" style={{ maxWidth: ITEM_WIDTH * VISIBLE_ITEMS, width: '100%' }}>
+                                        <div ref={containerRef} className="relative mx-auto w-full max-w-[600px] overflow-hidden rounded-xl border border-white/10 bg-white/[0.025]">
                                             {/* Edge fades */}
-                                            <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-[#111] to-transparent z-10 pointer-events-none" />
-                                            <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-[#111] to-transparent z-10 pointer-events-none" />
+                                            <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 w-8 bg-gradient-to-r from-[#0b0b0c] to-transparent" />
+                                            <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-10 w-8 bg-gradient-to-l from-[#0b0b0c] to-transparent" />
 
                                             <motion.div
                                                 className="flex"
@@ -844,8 +802,8 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                     <div
                                                         key={item.id}
                                                         ref={index === ITEMS_BEFORE_WINNER ? winnerCardRef : undefined}
-                                                        className="flex-shrink-0 flex flex-col items-center justify-center p-2 border-r border-white/5"
-                                                        style={{ width: ITEM_WIDTH, height: 120 }}
+                                                        className="flex flex-shrink-0 flex-col items-center justify-center border-r border-white/[0.05] p-2"
+                                                        style={{ width: 'clamp(72px, 20vw, 120px)', height: 112 }}
                                                     >
                                                         {item.type === 'cursor' && item.cursor ? (
                                                             <>
@@ -944,36 +902,15 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                 <div className="relative">
                                     {/* Rarity-colored header bar */}
                                     <div
-                                        className="border-b border-white/10 py-3 text-center text-xs font-semibold uppercase tracking-[0.18em] text-white"
-                                        style={{
-                                            background: `linear-gradient(90deg, transparent, ${getRarityColor(
-                                                activeRollType === 'cursor'
-                                                    ? getItemRarity()
-                                                    : (profileSpinResult?.backgroundInfo?.rarity || profileSpinResult?.effectInfo?.rarity || profileSpinResult?.borderInfo?.rarity || 'common')
-                                            )}55, transparent)`
-                                        }}
+                                        className="border-b border-white/[0.08] py-3 text-center text-xs font-medium text-white/55"
                                     >
-                                        {activeRollType === 'cursor' ? (
-                                            <>
-                                                {spinResult?.type === 'cursor' && spinResult.cursorInfo?.name}
-                                                {spinResult?.type === 'effect' && spinResult.effectInfo?.name}
-                                                {spinResult?.type === 'coins' && `+${spinResult.coinsWon} Coins`}
-                                                {spinResult?.type === 'nothing' && 'Better Luck Next Time!'}
-                                            </>
-                                        ) : (
-                                            <>
-                                                {profileSpinResult?.type === 'background' && profileSpinResult.backgroundInfo?.name}
-                                                {profileSpinResult?.type === 'profile_effect' && profileSpinResult.effectInfo?.name}
-                                                {profileSpinResult?.type === 'border' && profileSpinResult.borderInfo?.name}
-                                                {profileSpinResult?.type === 'nothing' && 'Better Luck Next Time!'}
-                                            </>
-                                        )}
+                                        Reward received
                                     </div>
 
                                     {/* Item Showcase */}
-                                    <div className="py-12 px-8 flex flex-col items-center">
+                                    <div className="flex flex-col items-center px-5 py-7 sm:px-8">
                                         {/* Item Display */}
-                                        <div className="flex items-center justify-center relative w-full h-40 mb-6">
+                                        <div className="relative mb-5 flex h-32 w-full items-center justify-center">
                                             <GachaReveal isVisible={true} rarity={
                                                 activeRollType === 'cursor'
                                                     ? getItemRarity()
@@ -988,29 +925,23 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                                 style={{ backgroundColor: spinResult.cursorInfo.color }}
                                                             />
                                                             <motion.div
-                                                                animate={{ scale: [1, 1.05, 1] }}
-                                                                transition={{ duration: 2, repeat: Infinity }}
-                                                                className="relative w-4 h-32 rounded-full"
+                                                            initial={{ scaleY: 0.82, opacity: 0 }}
+                                                            animate={{ scaleY: 1, opacity: 1 }}
+                                                            transition={{ duration: 0.32, ease: 'easeOut' }}
+                                                            className="relative h-24 w-3 rounded-full"
                                                                 style={{
                                                                     backgroundColor: spinResult.cursorInfo.color === 'rainbow' ? '#ec4899' : spinResult.cursorInfo.color,
-                                                                    boxShadow: `0 0 40px ${spinResult.cursorInfo.glow}`,
+                                                                boxShadow: `0 0 18px ${spinResult.cursorInfo.glow}`,
                                                                 }}
                                                             />
                                                         </div>
                                                     ) : spinResult?.type === 'effect' && spinResult.effectInfo ? (
-                                                        <motion.div
-                                                            animate={{ rotate: [0, 5, -5, 0], scale: [1, 1.1, 1] }}
-                                                            transition={{ duration: 2, repeat: Infinity }}
-                                                        >
+                                                        <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }}>
                                                             <EffectIcon color={spinResult.effectInfo.color} size={80} />
                                                         </motion.div>
                                                     ) : spinResult?.type === 'nothing' ? (
-                                                        <motion.div
-                                                            animate={{ x: [-5, 5, -5, 5, 0] }}
-                                                            transition={{ duration: 0.5, repeat: 2 }}
-                                                            className="flex flex-col items-center"
-                                                        >
-                                                            <div className="w-24 h-24 rounded-full bg-red-500/20 border-2 border-red-500/50 flex items-center justify-center">
+                                                        <div className="flex flex-col items-center">
+                                                            <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/15 bg-white/[0.03]">
                                                                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
                                                                     <circle cx="12" cy="12" r="10" />
                                                                     <path d="M16 16s-1.5-2-4-2-4 2-4 2" />
@@ -1018,32 +949,21 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                                     <line x1="15" y1="9" x2="15.01" y2="9" />
                                                                 </svg>
                                                             </div>
-                                                        </motion.div>
+                                                        </div>
                                                     ) : (
-                                                        <motion.div
-                                                            animate={{ rotate: [0, 10, -10, 0] }}
-                                                            transition={{ duration: 1.5, repeat: Infinity }}
-                                                        >
+                                                        <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }}>
                                                             <CoinIcon size={80} />
                                                         </motion.div>
                                                     )
                                                 ) : (
                                                     // Profile crate reveal
                                                     profileSpinResult?.type === 'coins' ? (
-                                                        <motion.div
-                                                            animate={{ scale: [1, 1.08, 1] }}
-                                                            transition={{ duration: 1.5, repeat: Infinity }}
-                                                            className="flex flex-col items-center gap-2"
-                                                        >
+                                                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }} className="flex flex-col items-center gap-2">
                                                             <CoinIcon size={80} />
                                                             <span className="font-mono text-lg font-bold text-amber-300">+{profileSpinResult.coinsWon ?? 10}</span>
                                                         </motion.div>
                                                     ) : profileSpinResult?.type === 'background' && profileSpinResult.backgroundInfo ? (
-                                                        <motion.div
-                                                            animate={{ scale: [1, 1.02, 1] }}
-                                                            transition={{ duration: 2, repeat: Infinity }}
-                                                            className="w-48 h-28 rounded-xl overflow-hidden shadow-2xl"
-                                                        >
+                                                        <motion.div initial={{ y: 8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.3 }} className="h-24 w-40 overflow-hidden rounded-lg border border-white/10">
                                                             <img
                                                                 src={profileSpinResult.backgroundInfo.path}
                                                                 alt={profileSpinResult.backgroundInfo.name}
@@ -1052,13 +972,13 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                         </motion.div>
                                                     ) : profileSpinResult?.type === 'profile_effect' && profileSpinResult.effectInfo ? (
                                                         <motion.div
-                                                            animate={{ rotate: [0, 360] }}
-                                                            transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                                                            className="w-24 h-24 rounded-full flex items-center justify-center"
+                                                            initial={{ scale: 0.85, opacity: 0 }}
+                                                            animate={{ scale: 1, opacity: 1 }}
+                                                            transition={{ duration: 0.3 }}
+                                                            className="flex h-20 w-20 items-center justify-center rounded-full"
                                                             style={{
                                                                 backgroundColor: `${profileSpinResult.effectInfo.color}30`,
-                                                                border: `3px solid ${profileSpinResult.effectInfo.color}`,
-                                                                boxShadow: `0 0 30px ${profileSpinResult.effectInfo.color}50`
+                                                                border: `2px solid ${profileSpinResult.effectInfo.color}`
                                                             }}
                                                         >
                                                             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={profileSpinResult.effectInfo.color} strokeWidth="2">
@@ -1067,21 +987,17 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                         </motion.div>
                                                     ) : profileSpinResult?.type === 'border' && profileSpinResult.borderInfo ? (
                                                         <motion.div
-                                                            animate={{ scale: [1, 1.1, 1] }}
-                                                            transition={{ duration: 1.5, repeat: Infinity }}
-                                                            className="w-24 h-24 rounded-full"
+                                                            initial={{ scale: 0.85, opacity: 0 }}
+                                                            animate={{ scale: 1, opacity: 1 }}
+                                                            transition={{ duration: 0.3 }}
+                                                            className="h-20 w-20 rounded-full"
                                                             style={{
                                                                 border: `${profileSpinResult.borderInfo.width * 2}px ${profileSpinResult.borderInfo.style === 'gradient' ? 'solid' : profileSpinResult.borderInfo.style} ${profileSpinResult.borderInfo.color || '#22d3ee'}`,
-                                                                boxShadow: `0 0 30px ${profileSpinResult.borderInfo.color || '#22d3ee'}50`
                                                             }}
                                                         />
                                                     ) : profileSpinResult?.type === 'nothing' ? (
-                                                        <motion.div
-                                                            animate={{ x: [-5, 5, -5, 5, 0] }}
-                                                            transition={{ duration: 0.5, repeat: 2 }}
-                                                            className="flex flex-col items-center"
-                                                        >
-                                                            <div className="w-24 h-24 rounded-full bg-red-500/20 border-2 border-red-500/50 flex items-center justify-center">
+                                                        <div className="flex flex-col items-center">
+                                                            <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/15 bg-white/[0.03]">
                                                                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
                                                                     <circle cx="12" cy="12" r="10" />
                                                                     <path d="M16 16s-1.5-2-4-2-4 2-4 2" />
@@ -1089,15 +1005,15 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                                     <line x1="15" y1="9" x2="15.01" y2="9" />
                                                                 </svg>
                                                             </div>
-                                                        </motion.div>
+                                                        </div>
                                                     ) : null
                                                 )}
                                             </GachaReveal>
                                         </div>
 
                                         {/* Item Name and Rarity */}
-                                        <div className="text-center mb-6">
-                                            <h3 className="text-2xl font-bold text-white mb-3">
+                                        <div className="mb-4 text-center">
+                                            <h3 className="mb-2 text-xl font-semibold text-white">
                                                 {activeRollType === 'cursor' ? (
                                                     <>
                                                         {spinResult?.type === 'cursor' && spinResult.cursorInfo?.name}
@@ -1115,9 +1031,9 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                     </>
                                                 )}
                                             </h3>
-                                            <div className="inline-flex items-center justify-center px-4 py-1.5 rounded-full bg-white/[0.06] border border-white/10">
+                                            <div className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">
                                                 <span
-                                                    className="text-xs font-bold uppercase tracking-wider"
+                                                    className="text-[10px] font-medium uppercase tracking-wider"
                                                     style={{
                                                         color: getRarityColor(
                                                             activeRollType === 'cursor'
@@ -1135,7 +1051,7 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
 
                                         {/* Text and Button */}
                                         <div className="text-center">
-                                            <p className="text-white/60 text-sm mb-6">
+                                            <p className="mb-5 max-w-sm text-sm text-white/55">
                                                 {activeRollType === 'cursor'
                                                     ? spinResult?.type === 'nothing'
                                                         ? 'No reward this time. Your pity progress has been saved.'

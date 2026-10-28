@@ -85,6 +85,7 @@ LEADERBOARD_TOP_3 = 3
 LEADERBOARD_COIN_BONUS = 0.20  # 20% extra coins for top 4-10
 TOP_3_COIN_BONUS = 0.50  # 50% extra coins for top 3 players
 INPUT_DELIVERY_GRACE_SECONDS = 1.5
+MIN_REWARD_CORRECT_CHARACTERS = 15
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,22 @@ class PlayerState:
     wpm: float = 0.0
     accuracy: float = 0.0
     score: float = 0.0
+
+
+def calculate_match_coin_base(player: PlayerState, opponent: PlayerState, expected_text: str) -> int:
+    """Return match coins only after meaningful, correct participation."""
+    if player.is_bot:
+        return 0
+
+    correct_final_characters = sum(
+        1
+        for index, char in player.final_characters.items()
+        if 0 <= index < len(expected_text) and char == expected_text[index]
+    )
+    if correct_final_characters < MIN_REWARD_CORRECT_CHARACTERS:
+        return 0
+
+    return WIN_COIN_REWARD if player.score > opponent.score else LOSS_COIN_REWARD
 
 
 @dataclass
@@ -886,7 +903,7 @@ class GameService:
                 except Exception as e:
                     logger.warning(f"Failed to get leaderboard bonus for P1: {e}")
                 
-            base_p1 = WIN_COIN_REWARD if p1_result_str == "win" else LOSS_COIN_REWARD
+            base_p1 = calculate_match_coin_base(session.player1, session.player2, session.word_text)
             rank_coins_p1 = int(base_p1 * rank_bonus_rate_p1)
             lb_coins_p1 = int(base_p1 * lb_bonus_rate_p1)
             total_p1 = base_p1 + rank_coins_p1 + lb_coins_p1
@@ -901,7 +918,7 @@ class GameService:
                 except Exception as e:
                     logger.warning(f"Failed to get leaderboard bonus for P2: {e}")
                 
-            base_p2 = WIN_COIN_REWARD if p2_result_str == "win" else LOSS_COIN_REWARD
+            base_p2 = calculate_match_coin_base(session.player2, session.player1, session.word_text)
             rank_coins_p2 = int(base_p2 * rank_bonus_rate_p2)
             lb_coins_p2 = int(base_p2 * lb_bonus_rate_p2)
             total_p2 = base_p2 + rank_coins_p2 + lb_coins_p2
@@ -915,8 +932,8 @@ class GameService:
             p1_result_str = "win" if session.player1.score > session.player2.score else ("loss" if session.player1.score < session.player2.score else "tie")
             p2_result_str = "win" if session.player2.score > session.player1.score else ("loss" if session.player2.score < session.player1.score else "tie")
             
-            base_p1 = WIN_COIN_REWARD if p1_result_str == "win" else LOSS_COIN_REWARD
-            base_p2 = WIN_COIN_REWARD if p2_result_str == "win" else LOSS_COIN_REWARD
+            base_p1 = calculate_match_coin_base(session.player1, session.player2, session.word_text)
+            base_p2 = calculate_match_coin_base(session.player2, session.player1, session.word_text)
             
             rank_coins_p1 = 0
             lb_coins_p1 = 0
@@ -1168,7 +1185,7 @@ class GameService:
                     return 0.0
 
                 p1_rank_bonus = get_rank_bonus_rate(session.player1.rank)
-                p1_base_coins = WIN_COIN_REWARD if p1_result == "win" else LOSS_COIN_REWARD
+                p1_base_coins = calculate_match_coin_base(session.player1, session.player2, session.word_text)
                 p1_coins = int(p1_base_coins * (1 + p1_bonus_rate + p1_rank_bonus))
                 await db.users.update_one(
                     {"firebase_uid": session.player1.uid},
@@ -1178,7 +1195,7 @@ class GameService:
 
                 if not session.player2.is_bot:
                     p2_rank_bonus = get_rank_bonus_rate(session.player2.rank)
-                    p2_base_coins = WIN_COIN_REWARD if p2_result == "win" else LOSS_COIN_REWARD
+                    p2_base_coins = calculate_match_coin_base(session.player2, session.player1, session.word_text)
                     p2_coins = int(p2_base_coins * (1 + p2_bonus_rate + p2_rank_bonus))
                     await db.users.update_one(
                         {"firebase_uid": session.player2.uid},

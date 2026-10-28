@@ -153,7 +153,7 @@ export default function MatchHistoryModal({ isOpen, onClose }: MatchHistoryModal
         <>
           {/* Backdrop */}
           <motion.div
-            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50"
+            className="fixed inset-0 z-50 typelo-modal-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -168,7 +168,7 @@ export default function MatchHistoryModal({ isOpen, onClose }: MatchHistoryModal
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="bg-[#0c0c0c] border border-white/[0.08] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden"
+              className="bg-[#0c0c0c] border border-white/[0.08] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden typelo-modal-surface"
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
