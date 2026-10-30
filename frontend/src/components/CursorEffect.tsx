@@ -219,8 +219,8 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
       ref={canvasRef}
       aria-hidden="true"
       data-trail={caret ?? 'pointer'}
-      className="pointer-events-none fixed inset-0 z-50 block max-w-none"
-      style={{ width: '100vw', height: '100dvh', background: 'transparent', mixBlendMode: 'normal' }}
+      className="pointer-events-none fixed inset-0 block max-w-none"
+      style={{ width: '100vw', height: '100dvh', zIndex: targetRef ? 120 : 50, background: 'transparent', mixBlendMode: 'normal' }}
     />
   )
   // Keep the drawing surface outside transformed application layers. Fixed canvases inside
