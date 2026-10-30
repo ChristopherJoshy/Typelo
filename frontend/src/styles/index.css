@@ -1254,10 +1254,12 @@ body,
 .profile-motion-pulse[data-active="true"] > .cosmetic-sigil, .profile-motion-lightning[data-active="true"] > .cosmetic-sigil, .profile-motion-thunder[data-active="true"] > .cosmetic-sigil { animation-name: cosmetic-pulse; }
 .profile-motion-glitch[data-active="true"] > .cosmetic-sigil, .profile-motion-pixels[data-active="true"] > .cosmetic-sigil, .profile-motion-matrix[data-active="true"] > .cosmetic-sigil { animation: cosmetic-drift 2s steps(4) infinite; }
 .cosmetic-orbit { animation: cosmetic-orbit var(--cosmetic-duration, 24s) linear infinite; }
+.cosmetic-border-trace { animation: cosmetic-border-trace var(--cosmetic-duration, 8s) linear infinite; }
 @keyframes cosmetic-drift { 50% { transform: translateY(4px) rotate(var(--cosmetic-rotation, 8deg)); opacity: .35; } }
 @keyframes cosmetic-pulse { 50% { transform: scale(.7); opacity: .3; } }
 @keyframes cosmetic-orbit { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .cosmetic-orbit, [data-active="true"] > .cosmetic-sigil { animation: none !important; } }
+@keyframes cosmetic-border-trace { to { stroke-dashoffset: -108; } }
+@media (prefers-reduced-motion: reduce) { .cosmetic-orbit, .cosmetic-border-trace, [data-active="true"] > .cosmetic-sigil { animation: none !important; } }
 
 /* Inventory: fixed-cost pages, static thumbnails, one animated inspector. */
 .inventory-backdrop { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px; background: #000c; backdrop-filter: blur(6px); }
