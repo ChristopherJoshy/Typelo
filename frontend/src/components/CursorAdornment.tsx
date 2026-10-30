@@ -1,10 +1,11 @@
 import CosmeticMotif from './CosmeticMotif'
 import { CURSORS } from '../types'
+import { AUTHORED_CURSORS } from './CursorArtwork'
 
 /** Face crest for expressive high-rarity caret skins, outside the caret clip path. */
 export default function CursorAdornment({ cursorId }: { cursorId: string }) {
   const cursor = CURSORS[cursorId]
-  if (!cursor?.face) return null
+  if (AUTHORED_CURSORS.has(cursorId) || !cursor?.face) return null
 
   const symbol = cursor.face
   return <span className="typing-cursor-adornment" data-cursor-adornment={cursorId} data-motion={cursor.motion ?? ''} aria-hidden="true"

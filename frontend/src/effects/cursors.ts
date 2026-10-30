@@ -61,14 +61,28 @@ const legacyFamilies: Record<string, string> = {
   void: 'void', celestial: 'halo', rainbow: 'spark',
 }
 
+const secondaryInk: Record<string,string> = {
+ default:'#fbbf24',ocean:'#67e8f9',forest:'#bef264',crimson:'#fda4af',mint:'#38bdf8',sky:'#c4b5fd',steel:'#67e8f9',coral:'#fbbf24',sunset:'#f472b6',lavender:'#f9a8d4',peach:'#a78bfa',sapphire:'#67e8f9',rose:'#c4b5fd',lime:'#22d3ee',violet:'#f9a8d4',galaxy:'#38bdf8',aurora:'#a78bfa',amber:'#fb923c',emerald:'#a3e635',ruby:'#fbbf24',cyber:'#22d3ee',retro:'#67e8f9',amethyst:'#f9a8d4',diamond:'#67e8f9',obsidian:'#c084fc',blood_moon:'#fb7185',toxic:'#fde047',golden:'#fff2b2',plasma:'#e879f9',inferno:'#fde047',glacier:'#a78bfa',hologram:'#e879f9',nebula:'#38bdf8',cosmos:'#f9a8d4',phoenix:'#fef08a',quantum:'#a78bfa',void:'#e879f9',celestial:'#f9a8d4',rainbow:'#38bdf8',
+}
+
 const collectionsById = new Map(collections.map(collection => [collection.id, collection]))
+
+/** Keep dark cosmetic inks visible against the match and inventory surfaces. */
+export function visibleCursorInk(color: string) {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return color
+  const rgb = [1, 3, 5].map(offset => parseInt(color.slice(offset, offset + 2), 16) / 255)
+  const brightness = rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722
+  if (brightness >= .42) return color
+  const lift = (.42 - brightness) / (1 - brightness)
+  return '#' + rgb.map(channel => Math.round((channel + (1 - channel) * lift) * 255).toString(16).padStart(2, '0')).join('')
+}
 
 export function getCursorPresentation(id: string) {
   const cursor = CURSORS[id] ?? CURSORS.default
   const collection = collectionsById.get(id)
   return {
     family: collection?.family ?? legacyFamilies[id] ?? 'spark',
-    accent: collection?.accent ?? cursor.glow,
+    accent: collection?.accent ?? secondaryInk[id] ?? cursor.glow,
     color: cursor.color,
     motion: collection?.motion ?? 'pulse',
     motif: collection?.motif ?? cursor.motif ?? collection?.family ?? 'spark',
@@ -79,10 +93,11 @@ export function getCursorPresentation(id: string) {
 
 export function getCursorStyle(id: string): CSSProperties {
   const cursor = CURSORS[id] ?? CURSORS.default
-  const [highlight, finish, width] = finishes[id] ?? finishes.default
+  const [rawHighlight, finish, width] = finishes[id] ?? finishes.default
+  const highlight = visibleCursorInk(secondaryInk[id] ?? rawHighlight)
   const collection = collectionsById.get(id)
   const shape = collection?.cursorShape ?? cursor.cursorShape
-  const base = ['void', 'obsidian'].includes(id) ? '#7c6a99' : cursor.color
+  const base = visibleCursorInk(cursor.color)
   const gradient = id === 'rainbow'
     ? 'linear-gradient(180deg,#fb7185,#fbbf24,#34d399,#38bdf8,#a78bfa)'
     : ['split', 'circuit', 'scan'].includes(finish)

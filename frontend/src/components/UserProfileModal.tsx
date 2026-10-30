@@ -1,3 +1,4 @@
+import { useProfileCosmeticAudio } from '../hooks/useProfileCosmeticAudio'
 /*   ______      __ ____  _______       _  ____  _   _ 
  *  |  ____|   / / __ \|__   __|/\   | |/ __ \| \ | |
  *  | |__   _ / / |  | |  | |  /  \  | | |  | |  \| |
@@ -141,6 +142,8 @@ export default function UserProfileModal({
 
     // Profile customization
     const bgInfo = backgroundDisplayMode !== 'off' && profile?.equipped_background ? getProfileBackgroundInfo(profile.equipped_background) : null
+    useProfileCosmeticAudio(isOpen, profile?.uid === userId ? profile.equipped_profile_effect : null, profile?.uid === userId ? profile.equipped_border : null, userId)
+
     const borderInfo = profile?.equipped_border ? getProfileBorderInfo(profile.equipped_border) : null
     const effectInfo = profile?.equipped_profile_effect ? getProfileEffectInfo(profile.equipped_profile_effect) : null
 

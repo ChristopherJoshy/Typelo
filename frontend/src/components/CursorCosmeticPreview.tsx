@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import CosmeticMotif from './CosmeticMotif'
+import CursorArtwork, { AUTHORED_CURSORS, getCursorBodyStyle } from './CursorArtwork'
 import { getCursorPresentation, getCursorStyle } from '../effects/cursors'
 
 interface CursorCosmeticPreviewProps {
@@ -44,9 +45,9 @@ export default function CursorCosmeticPreview({
       <span
         className="cosmetic-cursor-caret"
         data-caret={caretName}
-        style={{ ...cursorStyle, height: live ? 22 : 34 }}
-      />
-      {!live && <svg className="cosmetic-cursor-sigil" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+        style={{ ...cursorStyle, ...getCursorBodyStyle(id), height: live ? 28 : 42 }}
+      ><CursorArtwork id={id} active={active} /></span>
+      {!live && !AUTHORED_CURSORS.has(id) && <svg className="cosmetic-cursor-sigil" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
         <CosmeticMotif kind={presentation.face ?? presentation.motif} />
       </svg>}
     </span>

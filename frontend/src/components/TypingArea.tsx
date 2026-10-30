@@ -45,6 +45,7 @@ import { useGameStore } from '../stores/gameStore'
 import { CursorInfo, EffectInfo, getCursorInfo, getEffectInfo } from '../types'
 import CursorEffect from './CursorEffect'
 import CursorAdornment from './CursorAdornment'
+import CursorArtwork, { getCursorBodyStyle } from './CursorArtwork'
 import { getCursorStyle } from '../effects/cursors'
 
 // --- Types ---
@@ -169,10 +170,11 @@ const MemoizedCharacter = memo(({
               width: Math.max(5, Number(getCursorStyle(playerConfig.cursor.id).width) || 0),
               border: '1px solid rgba(255,255,255,0.9)',
               boxShadow: `0 0 0 1px rgba(0,0,0,0.65), 0 0 12px ${playerConfig.cursor.glow}, 0 0 26px ${playerConfig.cursor.glow}`,
+              ...getCursorBodyStyle(playerConfig.cursor.id),
             }}
             animate={{ opacity: [1, 0.6, 1] }}
             transition={{ opacity: { duration: 0.8, repeat: Infinity, ease: 'easeInOut' } }}
-          />
+          ><CursorArtwork id={playerConfig.cursor.id} /></motion.span>
           <CursorAdornment cursorId={playerConfig.cursor.id} />
         </>
       )}
@@ -191,12 +193,13 @@ const MemoizedCharacter = memo(({
               width: Math.max(7, Number(getCursorStyle(opponentConfig.cursor.id).width) || 0),
               border: '1px solid rgba(255,255,255,0.9)',
               boxShadow: `0 0 0 1px rgba(0,0,0,0.75), 0 0 14px ${opponentConfig.cursor.glow}, 0 0 28px ${opponentConfig.cursor.glow}`,
+              ...getCursorBodyStyle(opponentConfig.cursor.id),
             }}
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ opacity: { duration: 0.1 }, scale: { type: 'spring', stiffness: 500, damping: 30 } }}
-          />
+          ><CursorArtwork id={opponentConfig.cursor.id} /></motion.span>
           <CursorAdornment cursorId={opponentConfig.cursor.id} />
         </>
       )}
@@ -336,11 +339,12 @@ const MemoizedWord = memo(({
               width: Math.max(5, Number(getCursorStyle(playerConfig.cursor.id).width) || 0),
               border: '1px solid rgba(255,255,255,0.9)',
               boxShadow: `0 0 0 1px rgba(0,0,0,0.65), 0 0 12px ${playerConfig.cursor.glow}, 0 0 26px ${playerConfig.cursor.glow}`,
+              ...getCursorBodyStyle(playerConfig.cursor.id),
               transform: 'translateX(100%)',
             }}
             animate={{ opacity: [1, 0.6, 1] }}
             transition={{ opacity: { duration: 0.8, repeat: Infinity, ease: 'easeInOut' } }}
-          />
+          ><CursorArtwork id={playerConfig.cursor.id} /></motion.span>
           <CursorAdornment cursorId={playerConfig.cursor.id} />
         </>
       )}
@@ -358,13 +362,14 @@ const MemoizedWord = memo(({
               width: Math.max(7, Number(getCursorStyle(opponentConfig.cursor.id).width) || 0),
               border: '1px solid rgba(255,255,255,0.9)',
               boxShadow: `0 0 0 1px rgba(0,0,0,0.75), 0 0 14px ${opponentConfig.cursor.glow}, 0 0 28px ${opponentConfig.cursor.glow}`,
+              ...getCursorBodyStyle(opponentConfig.cursor.id),
               transform: 'translateX(100%)',
             }}
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ opacity: { duration: 0.1 }, scale: { type: 'spring', stiffness: 500, damping: 30 } }}
-          />
+          ><CursorArtwork id={opponentConfig.cursor.id} /></motion.span>
           <CursorAdornment cursorId={opponentConfig.cursor.id} />
         </>
       )}

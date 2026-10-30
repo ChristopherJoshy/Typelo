@@ -1,3 +1,4 @@
+import { useProfileCosmeticAudio } from '../hooks/useProfileCosmeticAudio'
 /*   ______      __ ____  _______       _  ____  _   _ 
  *  |  ____|   / / __ \|__   __|/\   | |/ __ \| \ | |
  *  | |__   _ / / |  | |  | |  /  \  | | |  | |  \| |
@@ -58,6 +59,8 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     const backgroundDisplayMode = usePreferencesStore(s => s.backgroundDisplayMode)
     const profileEffect = getProfileEffectInfo(effectId)
     const background = getProfileBackgroundInfo(backgroundId)
+    useProfileCosmeticAudio(isOpen, effectId, borderId, user?.uid ?? 'self')
+
     const [inviteLink, setInviteLink] = useState<string | null>(null)
     const [copied, setCopied] = useState(false)
     const [converting, setConverting] = useState(false)

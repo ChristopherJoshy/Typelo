@@ -36,7 +36,7 @@
  * components: TypingArea, Result.
  */
 
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useGameStore } from '../stores/gameStore'
@@ -46,6 +46,7 @@ import { useTyping } from '../hooks/useTyping'
 import { useSound } from '../hooks/useSound'
 import { DEFAULT_GAME_DURATION_SECONDS } from '../constants'
 import TypingArea from './TypingArea'
+import { playCosmeticPair } from '../effects/cosmeticAudio'
 import Result from './Result'
 import { useInventoryStore } from '../stores/inventoryStore'
 
@@ -91,6 +92,15 @@ export default function Game() {
     reset,
   } = useGameStore()
 
+  const previousOpponentProgress = useRef(opponentCharIndex)
+  useEffect(() => {
+    const previous = previousOpponentProgress.current
+    previousOpponentProgress.current = opponentCharIndex
+    if (status === 'playing' && opponentCharIndex > previous && matchInfo) {
+      playCosmeticPair('typing', matchInfo.opponentCursor ?? null, matchInfo.opponentEffect ?? null, 'opponent', true)
+    }
+  }, [opponentCharIndex, status, matchInfo])
+
   const { inputRef, handleKeyDown, handleMobileInput, currentWord } = useTyping({
     timeOffset,
     onKeystroke: (char, charIndex, correct) => {
@@ -107,6 +117,7 @@ export default function Game() {
       }
 
       playSound(correct ? 'thock' : 'error', char, intensity, wpm)
+      if (correct) playCosmeticPair('typing', equippedCursor, equippedEffect, 'player')
       sendKeystroke(char, charIndex)
     },
     onWordComplete: (word, wordIndex) => {

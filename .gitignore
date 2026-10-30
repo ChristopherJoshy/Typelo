@@ -109,3 +109,6 @@ dump.rdb
 *.bak
 *.tmp
 .cache/
+
+# Active cosmetic rework specification
+!docs/cosmetics-rework.md

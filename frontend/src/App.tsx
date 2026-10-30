@@ -50,6 +50,7 @@ import ConnectionError from './components/ConnectionError'
 import InstallBanner from './components/InstallBanner'
 import UpdateBanner from './components/UpdateBanner'
 import CursorEffect from './components/CursorEffect'
+import { unlockCosmeticAudio } from './effects/cosmeticAudio'
 
 const Dashboard = lazy(() => import('./components/Dashboard'))
 const Game = lazy(() => import('./components/Game'))
@@ -103,6 +104,15 @@ function App() {
 
   // Anti-cheat: disabled to prevent site reload issues
   // useDevToolsDetection()
+
+  useEffect(() => {
+    window.addEventListener('pointerdown', unlockCosmeticAudio, { passive: true })
+    window.addEventListener('keydown', unlockCosmeticAudio)
+    return () => {
+      window.removeEventListener('pointerdown', unlockCosmeticAudio)
+      window.removeEventListener('keydown', unlockCosmeticAudio)
+    }
+  }, [])
 
   // Start health check on mount
   useEffect(() => {

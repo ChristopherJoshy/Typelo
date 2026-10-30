@@ -14,6 +14,8 @@ const backgroundModes: { id: BackgroundDisplayMode; label: string; description: 
 ]
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+  const cosmeticSoundsEnabled = usePreferencesStore(state => state.cosmeticSoundsEnabled)
+  const setCosmeticSoundsEnabled = usePreferencesStore(state => state.setCosmeticSoundsEnabled)
   const mouseEffectsEnabled = usePreferencesStore(state => state.mouseEffectsEnabled)
   const backgroundDisplayMode = usePreferencesStore(state => state.backgroundDisplayMode)
   const setMouseEffectsEnabled = usePreferencesStore(state => state.setMouseEffectsEnabled)
@@ -92,6 +94,17 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </section>
 
+                <section className="flex items-center justify-between gap-5">
+                  <div>
+                    <h3 className="text-sm font-medium text-white">Cosmetic sounds</h3>
+                    <p className="mt-1 text-xs text-white/45">Premium match and profile sounds.</p>
+                  </div>
+                  <button type="button" role="switch" aria-label="Cosmetic sounds" aria-checked={cosmeticSoundsEnabled}
+                    onClick={() => setCosmeticSoundsEnabled(!cosmeticSoundsEnabled)}
+                    className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors ${cosmeticSoundsEnabled ? 'border-rose-300/50 bg-rose-400/80' : 'border-white/15 bg-white/10'}`}>
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${cosmeticSoundsEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                  </button>
+                </section>
                 <fieldset>
                   <legend className="text-sm font-medium text-white">Equipped background</legend>
                   <div role="radiogroup" aria-label="Background display" className="mt-3 grid gap-2">

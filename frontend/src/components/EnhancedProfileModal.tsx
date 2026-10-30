@@ -1,3 +1,4 @@
+import { useProfileCosmeticAudio } from '../hooks/useProfileCosmeticAudio'
 /*   ______      __ ____  _______       _  ____  _   _ 
  *  |  ____|   / / __ \|__   __|/\   | |/ __ \| \ | |
  *  | |__   _ / / |  | |  | |  /  \  | | |  | |  \| |
@@ -105,6 +106,8 @@ export default function EnhancedProfileModal({
     const bgInfo = backgroundDisplayMode !== 'off' && equippedBackground ? getProfileBackgroundInfo(equippedBackground) : null
     const borderInfo = equippedBorder ? getProfileBorderInfo(equippedBorder) : null
     const effectInfo = equippedProfileEffect ? getProfileEffectInfo(equippedProfileEffect) : null
+
+    useProfileCosmeticAudio(isOpen, equippedProfileEffect, equippedBorder, user?.uid ?? 'self')
 
     const limit = 10
 
