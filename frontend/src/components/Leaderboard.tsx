@@ -46,7 +46,9 @@ import { useAuthStore } from '../stores/authStore'
 import { useOnlineStore } from '../stores/onlineStore'
 import UserProfileModal from './UserProfileModal'
 import { getProfileBorderInfo, getProfileEffectInfo, getProfileBackgroundInfo } from '../types'
-import AvatarDecoration, { EFFECT_TO_DECORATION, BORDER_TO_DECORATION } from './AvatarDecoration'
+import ProfileEffectFrame, { visibleCosmeticColor } from './ProfileEffectFrame'
+import { useInventoryStore } from '../stores/inventoryStore'
+import AvatarDecoration, { BORDER_TO_DECORATION } from './AvatarDecoration'
 
 interface UserRankInfo {
   position: number
@@ -406,7 +408,9 @@ export default function Leaderboard() {
 
 const LeaderboardRow = forwardRef<HTMLDivElement, { entry: LeaderboardEntry; index: number; isCurrentUser?: boolean; isOnline?: boolean; onClick?: () => void }>(
   function LeaderboardRow({ entry, index, isCurrentUser, isOnline, onClick }, ref) {
-    const { position, user } = entry
+    const equipped = useInventoryStore(s => ({ border: s.equippedBorder, effect: s.equippedProfileEffect, background: s.equippedBackground }))
+    const { position } = entry
+    const user = isCurrentUser ? { ...entry.user, equippedBorder: equipped.border, equippedProfileEffect: equipped.effect, equippedBackground: equipped.background } : entry.user
     const effectInfo = user.equippedProfileEffect ? getProfileEffectInfo(user.equippedProfileEffect) : null
     const bgInfo = user.equippedBackground ? getProfileBackgroundInfo(user.equippedBackground) : null
 
@@ -422,8 +426,8 @@ const LeaderboardRow = forwardRef<HTMLDivElement, { entry: LeaderboardEntry; ind
         <div
           className={`group relative flex items-center gap-4 p-3 rounded-lg transition-colors cursor-pointer overflow-hidden ${isCurrentUser ? 'bg-accent-focus/10 border border-accent-focus/20' : 'hover:bg-white/[0.04]'}`}
           style={{
-            border: effectInfo ? `1px solid ${effectInfo.color}40` : undefined,
-            boxShadow: effectInfo ? `0 0 8px ${effectInfo.color}30` : undefined,
+            border: effectInfo ? `1px solid ${visibleCosmeticColor(effectInfo.color)}40` : undefined,
+            boxShadow: effectInfo ? `0 0 8px ${visibleCosmeticColor(effectInfo.color)}30` : undefined,
           }}
         >
           {/* Background Image with Blur */}
@@ -445,31 +449,7 @@ const LeaderboardRow = forwardRef<HTMLDivElement, { entry: LeaderboardEntry; ind
             <div className="absolute inset-0 bg-black/60 pointer-events-none rounded-lg ring-1 ring-white/10" />
           )}
 
-          {/* Inner effect gradient */}
-          {(effectInfo) && (
-            <>
-              <div
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  background: `linear-gradient(135deg, ${effectInfo.color}35 0%, ${effectInfo.color}10 30%, transparent 50%, ${effectInfo.color}10 70%, ${effectInfo.color}35 100%)`,
-                  animation: effectInfo?.animation === 'pulse'
-                    ? 'profile-inner-pulse 3s ease-in-out infinite'
-                    : effectInfo.animation === 'glow'
-                      ? 'profile-inner-glow 3s ease-in-out infinite'
-                      : undefined
-                }}
-              />
-              {/* Full Frame Effect */}
-              {user.equippedProfileEffect && (
-                <AvatarDecoration
-                  decorationType={EFFECT_TO_DECORATION[user.equippedProfileEffect] || 'default'}
-                  size="100%"
-                  animate={true}
-                  className="z-0"
-                />
-              )}
-            </>
-          )}
+          {effectInfo && <ProfileEffectFrame effect={effectInfo} />}
 
           {/* Selection Indicator */}
           {isCurrentUser && (
@@ -513,7 +493,7 @@ const LeaderboardRow = forwardRef<HTMLDivElement, { entry: LeaderboardEntry; ind
                     className="w-8 h-8 rounded-full overflow-hidden bg-white/10 transition-all relative"
                     style={{
                       boxShadow: effectInfo?.color
-                        ? `0 0 12px ${effectInfo.color}60`
+                        ? `0 0 12px ${visibleCosmeticColor(effectInfo.color)}60`
                         : borderInfo?.color
                           ? `0 2px 10px ${borderInfo.color}40`
                           : undefined

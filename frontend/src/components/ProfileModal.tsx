@@ -39,7 +39,10 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
-import { getRankColor } from '../types'
+import ProfileEffectFrame from './ProfileEffectFrame'
+import AvatarDecoration from './AvatarDecoration'
+import { useInventoryStore } from '../stores/inventoryStore'
+import { getProfileEffectInfo, getProfileBackgroundInfo, getRankColor } from '../types'
 
 interface ProfileModalProps {
     isOpen: boolean
@@ -48,6 +51,11 @@ interface ProfileModalProps {
 
 export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     const { user, stats, isGuest, convertGuestToGoogle } = useAuthStore()
+    const effectId = useInventoryStore(s => s.equippedProfileEffect)
+    const borderId = useInventoryStore(s => s.equippedBorder)
+    const backgroundId = useInventoryStore(s => s.equippedBackground)
+    const profileEffect = getProfileEffectInfo(effectId)
+    const background = getProfileBackgroundInfo(backgroundId)
     const [inviteLink, setInviteLink] = useState<string | null>(null)
     const [copied, setCopied] = useState(false)
     const [converting, setConverting] = useState(false)
@@ -106,13 +114,15 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                         exit={{ opacity: 0 }}
                     >
                         <motion.div
-                            className="bg-[#0c0c0c] border border-white/[0.08] rounded-2xl w-full max-w-sm overflow-hidden typelo-modal-surface"
+                            className="relative bg-[#0c0c0c] border border-white/[0.08] rounded-2xl w-full max-w-sm overflow-hidden typelo-modal-surface"
                             initial={{ scale: 0.95, y: 20 }}
                             animate={{ scale: 1, y: 0 }}
                             exit={{ scale: 0.95, y: 20 }}
                             transition={{ type: 'spring', damping: 25, stiffness: 400 }}
                             onClick={(e) => e.stopPropagation()}
                         >
+                            {profileEffect && <ProfileEffectFrame effect={profileEffect} />}
+                            {background && <div className="absolute inset-0 bg-cover bg-center opacity-20 pointer-events-none" style={{ backgroundImage: `url(${background.path})` }} />}
                             {/* Header with avatar */}
                             <div className="relative px-6 pt-8 pb-6">
                                 {/* Close button */}
@@ -127,8 +137,9 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
 
                                 {/* Avatar with online indicator */}
                                 <div className="flex flex-col items-center">
-                                    <div className="relative">
-                                        <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-white/10 bg-white/5">
+                                    <div className="relative p-5">
+                                        {borderId && <AvatarDecoration decorationType={`border:${borderId}`} size={120} />}
+                                        <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-white/10 bg-white/5">
                                             {user?.photoURL ? (
                                                 <img
                                                     src={user.photoURL}

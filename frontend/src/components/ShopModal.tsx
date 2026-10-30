@@ -1,3 +1,4 @@
+import CosmeticPreview from './CosmeticPreview'
 /*   ______      __ ____  _______       _  ____  _   _ 
  *  |  ____|   / / __ \|__   __|/\   | |/ __ \| \ | |
  *  | |__   _ / / |  | |  | |  /  \  | | |  | |  \| |
@@ -62,6 +63,7 @@ const ITEM_WIDTH = 120
 const VISIBLE_ITEMS = 5
 const ITEMS_BEFORE_WINNER = 36
 const ANIMATION_DURATION = 3.8
+const AUTO_SPIN_DELAY_MS = 1500
 
 interface SpinItem {
     type: 'cursor' | 'coins' | 'effect' | 'background' | 'profile_effect' | 'border' | 'nothing' | 'unknown'
@@ -72,6 +74,16 @@ interface SpinItem {
     profileEffect?: ProfileEffectInfo
     border?: ProfileBorderInfo
     id: string
+}
+
+const getSpinItemAccent = (item: SpinItem): string => {
+    if (item.cursor) return item.cursor.color === 'rainbow' ? getRarityColor(item.cursor.rarity) : item.cursor.color
+    if (item.effect) return item.effect.color
+    if (item.background) return getRarityColor(item.background.rarity)
+    if (item.profileEffect) return item.profileEffect.color
+    if (item.border) return item.border.colors?.[0] || item.border.color || getRarityColor(item.border.rarity)
+    if (item.type === 'coins') return '#fbbf24'
+    return '#94a3b8'
 }
 
 interface ShopModalProps {
@@ -112,12 +124,14 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
     const [leaderboardBonus, setLeaderboardBonus] = useState<LeaderboardBonus | null>(null)
     const [autoSpinCursor, setAutoSpinCursor] = useState(false)
     const [autoSpinProfile, setAutoSpinProfile] = useState(false)
+    const rollingAccent = activeRollType === 'cursor' ? '#fb7185' : '#22d3ee'
 
     const controls = useAnimation()
     const tickIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const lastTickRef = useRef<number>(0)
     const containerRef = useRef<HTMLDivElement>(null)
     const winnerCardRef = useRef<HTMLDivElement>(null)
+    const autoSpinActionRef = useRef<() => void>(() => {})
 
     const baseItems: SpinItem[] = useMemo(() => {
         const items: SpinItem[] = []
@@ -430,6 +444,60 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
         }
     }
 
+    const toggleAutoSpin = (rollType: 'cursor' | 'profile') => {
+        const isEnabled = rollType === 'cursor' ? autoSpinCursor : autoSpinProfile
+        if (isEnabled) {
+            if (rollType === 'cursor') setAutoSpinCursor(false)
+            else setAutoSpinProfile(false)
+            return
+        }
+
+        const cost = rollType === 'cursor'
+            ? (leaderboardBonus?.gachaDiscountedCost ?? SPIN_COST)
+            : (leaderboardBonus?.profileDiscountedCost ?? PROFILE_SPIN_COST)
+        if (!idToken || coins < cost) return
+
+        // Only one crate mode auto-rolls at a time.
+        if (rollType === 'cursor') {
+            setAutoSpinProfile(false)
+            setAutoSpinCursor(true)
+        } else {
+            setAutoSpinCursor(false)
+            setAutoSpinProfile(true)
+        }
+
+        // Enabling auto from the crate screen starts the first roll too.
+        // If a manual roll is already in flight, the reveal loop continues it.
+        if (phase === 'crates' && !isSpinning) {
+            if (rollType === 'cursor') void handleOpenCrate()
+            else void handleOpenProfileCrate()
+        }
+    }
+
+    autoSpinActionRef.current = activeRollType === 'cursor'
+        ? () => { void handleOpenCrate() }
+        : () => { void handleOpenProfileCrate() }
+
+    useEffect(() => {
+        if (phase !== 'reveal' || isSpinning) return
+
+        const isAutoEnabled = activeRollType === 'cursor' ? autoSpinCursor : autoSpinProfile
+        if (!isAutoEnabled) return
+
+        const cost = activeRollType === 'cursor'
+            ? (leaderboardBonus?.gachaDiscountedCost ?? SPIN_COST)
+            : (leaderboardBonus?.profileDiscountedCost ?? PROFILE_SPIN_COST)
+
+        if (!idToken || coins < cost) {
+            if (activeRollType === 'cursor') setAutoSpinCursor(false)
+            else setAutoSpinProfile(false)
+            return
+        }
+
+        const timeout = window.setTimeout(() => autoSpinActionRef.current(), AUTO_SPIN_DELAY_MS)
+        return () => window.clearTimeout(timeout)
+    }, [phase, isSpinning, activeRollType, autoSpinCursor, autoSpinProfile, coins, leaderboardBonus, idToken])
+
     const calculateBoostedRate = (baseRateStr: string, bonusPercent: number = 0) => {
         if (!bonusPercent) return baseRateStr
         const baseRate = parseFloat(baseRateStr.replace('%', ''))
@@ -586,13 +654,15 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                 {/* Auto and Info buttons - hidden on mobile */}
                                                 <div className="flex items-center justify-between gap-2">
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); setAutoSpinCursor(!autoSpinCursor) }}
-                                                        className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors ${autoSpinCursor
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); toggleAutoSpin('cursor') }}
+                                                        disabled={!autoSpinCursor && (!idToken || coins < (leaderboardBonus?.gachaDiscountedCost ?? SPIN_COST))}
+                                                        className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${autoSpinCursor
                                                             ? 'border-rose-400/30 bg-rose-400/[0.08] text-rose-200'
                                                             : 'border-white/[0.08] text-white/50 hover:bg-white/[0.04] hover:text-white'
                                                             }`}
                                                     >
-                                                        {autoSpinCursor ? 'Auto: ON' : 'Enable Auto'}
+                                                        {autoSpinCursor ? 'Auto: ON' : 'Auto Roll'}
                                                     </button>
 
                                                     <button
@@ -695,13 +765,15 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                 {/* Auto and Info buttons - hidden on mobile */}
                                                 <div className="flex items-center justify-between gap-2">
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); setAutoSpinProfile(!autoSpinProfile) }}
-                                                        className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors ${autoSpinProfile
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); toggleAutoSpin('profile') }}
+                                                        disabled={!autoSpinProfile && (!idToken || coins < (leaderboardBonus?.profileDiscountedCost ?? PROFILE_SPIN_COST))}
+                                                        className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${autoSpinProfile
                                                             ? 'border-rose-400/30 bg-rose-400/[0.08] text-rose-200'
                                                             : 'border-white/[0.08] text-white/50 hover:bg-white/[0.04] hover:text-white'
                                                             }`}
                                                     >
-                                                        {autoSpinProfile ? 'Auto: ON' : 'Enable Auto'}
+                                                        {autoSpinProfile ? 'Auto: ON' : 'Auto Roll'}
                                                     </button>
 
                                                     <button
@@ -783,12 +855,52 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                         {
                             phase === 'rolling' && (
                                 <div className="py-6">
+                                    <div className="mb-3 flex items-center justify-center gap-2">
+                                        <motion.span
+                                            aria-hidden="true"
+                                            className="h-1.5 w-1.5 rounded-full"
+                                            style={{ backgroundColor: rollingAccent, boxShadow: `0 0 10px ${rollingAccent}` }}
+                                            animate={reduceMotion ? { opacity: 0.75 } : { opacity: [0.35, 1, 0.35] }}
+                                            transition={reduceMotion ? { duration: 0 } : { duration: 0.7, repeat: Infinity, ease: 'easeInOut' }}
+                                        />
+                                        <span className="text-[10px] font-medium uppercase tracking-[0.24em] text-white/50">
+                                            {activeRollType === 'cursor' ? 'Cursor roll' : 'Profile kit roll'}
+                                        </span>
+                                    </div>
                                     {/* Center Marker */}
                                     <div className="relative">
-                                        <div aria-hidden="true" className="absolute bottom-0 left-1/2 top-0 z-20 w-px -translate-x-1/2 bg-rose-400" />
+                                        <div aria-hidden="true" className="pointer-events-none absolute bottom-0 left-1/2 top-0 z-20 -translate-x-1/2">
+                                            <motion.div
+                                                className="absolute bottom-0 left-1/2 top-0 w-10 -translate-x-1/2"
+                                                style={{ background: `linear-gradient(90deg, transparent, ${rollingAccent}24, transparent)` }}
+                                                animate={reduceMotion ? { opacity: 0.45 } : { opacity: [0.2, 0.75, 0.2] }}
+                                                transition={reduceMotion ? { duration: 0 } : { duration: 0.8, repeat: Infinity, ease: 'easeInOut' }}
+                                            />
+                                            <div
+                                                className="absolute bottom-0 left-1/2 top-0 w-[2px] -translate-x-1/2"
+                                                style={{
+                                                    background: `linear-gradient(180deg, transparent, ${rollingAccent}, white 48%, ${rollingAccent}, transparent)`,
+                                                    boxShadow: `0 0 14px ${rollingAccent}`,
+                                                }}
+                                            />
+                                            <motion.div
+                                                className="absolute -top-1 left-1/2 h-2.5 w-2.5 -translate-x-1/2 rotate-45 rounded-[2px] border border-white/70"
+                                                style={{ backgroundColor: rollingAccent, boxShadow: `0 0 12px ${rollingAccent}` }}
+                                                animate={reduceMotion ? { scale: 1 } : { scale: [0.9, 1.15, 0.9] }}
+                                                transition={reduceMotion ? { duration: 0 } : { duration: 0.7, repeat: Infinity, ease: 'easeInOut' }}
+                                            />
+                                        </div>
 
                                         {/* Rolling Strip */}
-                                        <div ref={containerRef} className="relative mx-auto w-full max-w-[600px] overflow-hidden rounded-xl border border-white/10 bg-white/[0.025]">
+                                        <div
+                                            ref={containerRef}
+                                            className="relative mx-auto w-full max-w-[600px] overflow-hidden rounded-xl border bg-[#09090b]"
+                                            style={{
+                                                borderColor: `${rollingAccent}55`,
+                                                background: `radial-gradient(ellipse at center, ${rollingAccent}18 0%, #09090b 72%)`,
+                                                boxShadow: `0 12px 36px -28px ${rollingAccent}cc, inset 0 0 26px ${rollingAccent}12`,
+                                            }}
+                                        >
                                             {/* Edge fades */}
                                             <div className="pointer-events-none absolute bottom-0 left-0 top-0 z-10 w-8 bg-gradient-to-r from-[#0b0b0c] to-transparent" />
                                             <div className="pointer-events-none absolute bottom-0 right-0 top-0 z-10 w-8 bg-gradient-to-l from-[#0b0b0c] to-transparent" />
@@ -802,79 +914,23 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                     <div
                                                         key={item.id}
                                                         ref={index === ITEMS_BEFORE_WINNER ? winnerCardRef : undefined}
-                                                        className="flex flex-shrink-0 flex-col items-center justify-center border-r border-white/[0.05] p-2"
-                                                        style={{ width: 'clamp(72px, 20vw, 120px)', height: 112 }}
+                                                        className={`flex flex-shrink-0 flex-col items-center justify-center border-r p-2 ${index === ITEMS_BEFORE_WINNER ? 'rounded-md' : ''}`}
+                                                        style={{
+                                                            width: 'clamp(72px, 20vw, 120px)',
+                                                            height: 112,
+                                                            borderColor: `${getSpinItemAccent(item)}40`,
+                                                            background: `linear-gradient(180deg, ${getSpinItemAccent(item)}18, ${getSpinItemAccent(item)}05 70%, transparent)`,
+                                                            boxShadow: index === ITEMS_BEFORE_WINNER
+                                                                ? `inset 0 0 22px ${getSpinItemAccent(item)}28, 0 0 18px ${getSpinItemAccent(item)}40`
+                                                                : undefined,
+                                                        }}
                                                     >
-                                                        {item.type === 'cursor' && item.cursor ? (
+                                                        {item.cursor || item.effect || item.background || item.profileEffect || item.border ? (
                                                             <>
-                                                                <div
-                                                                    className="w-2 h-12 rounded-full mb-2"
-                                                                    style={{
-                                                                        backgroundColor: item.cursor.color === 'rainbow' ? '#ec4899' : item.cursor.color,
-                                                                        boxShadow: `0 0 16px ${item.cursor.glow}`,
-                                                                    }}
-                                                                />
-                                                                <span className="text-[10px] text-white/60 text-center truncate w-full px-1">{item.cursor.name}</span>
-                                                                <span className="text-[8px] uppercase mt-0.5" style={{ color: getRarityColor(item.cursor.rarity) }}>
-                                                                    {item.cursor.rarity}
-                                                                </span>
-                                                            </>
-                                                        ) : item.type === 'effect' && item.effect ? (
-                                                            <>
-                                                                <EffectIcon color={item.effect.color} size={40} />
-                                                                <span className="text-[10px] text-white/60 text-center truncate w-full px-1 mt-1">{item.effect.name}</span>
-                                                                <span className="text-[8px] uppercase mt-0.5" style={{ color: getRarityColor(item.effect.rarity) }}>
-                                                                    {item.effect.rarity}
-                                                                </span>
-                                                            </>
-                                                        ) : item.type === 'background' && item.background ? (
-                                                            <>
-                                                                <div
-                                                                    className="w-16 h-10 rounded overflow-hidden mb-1"
-                                                                    style={{ backgroundColor: `${getRarityColor(item.background.rarity)}20` }}
-                                                                >
-                                                                    <img
-                                                                        src={item.background.path}
-                                                                        alt={item.background.name}
-                                                                        className="w-full h-full object-cover"
-                                                                        loading="lazy"
-                                                                        decoding="async"
-                                                                    />
-                                                                </div>
-                                                                <span className="text-[10px] text-white/60 text-center truncate w-full px-1">{item.background.name}</span>
-                                                                <span className="text-[8px] uppercase mt-0.5" style={{ color: getRarityColor(item.background.rarity) }}>
-                                                                    {item.background.rarity}
-                                                                </span>
-                                                            </>
-                                                        ) : item.type === 'profile_effect' && item.profileEffect ? (
-                                                            <>
-                                                                <div
-                                                                    className="w-10 h-10 rounded-full flex items-center justify-center mb-1"
-                                                                    style={{ backgroundColor: `${item.profileEffect.color}20`, border: `2px solid ${item.profileEffect.color}` }}
-                                                                >
-                                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={item.profileEffect.color} strokeWidth="2">
-                                                                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                                                                    </svg>
-                                                                </div>
-                                                                <span className="text-[10px] text-white/60 text-center truncate w-full px-1">{item.profileEffect.name}</span>
-                                                                <span className="text-[8px] uppercase mt-0.5" style={{ color: getRarityColor(item.profileEffect.rarity) }}>
-                                                                    {item.profileEffect.rarity}
-                                                                </span>
-                                                            </>
-                                                        ) : item.type === 'border' && item.border ? (
-                                                            <>
-                                                                <div
-                                                                    className="w-10 h-10 rounded-full mb-1"
-                                                                    style={{
-                                                                        border: `${item.border.width}px ${item.border.style === 'gradient' ? 'solid' : item.border.style} ${item.border.color || '#22d3ee'}`,
-                                                                        background: item.border.style === 'gradient' && item.border.colors ?
-                                                                            `linear-gradient(45deg, ${item.border.colors.join(', ')})` : 'transparent'
-                                                                    }}
-                                                                />
-                                                                <span className="text-[10px] text-white/60 text-center truncate w-full px-1">{item.border.name}</span>
-                                                                <span className="text-[8px] uppercase mt-0.5" style={{ color: getRarityColor(item.border.rarity) }}>
-                                                                    {item.border.rarity}
-                                                                </span>
+                                                              <div className="relative w-full h-20 overflow-hidden flex items-center justify-center">
+                                                                <CosmeticPreview kind={item.type as 'cursor' | 'effect' | 'background' | 'profile_effect' | 'border'} item={item.cursor ?? item.effect ?? item.background ?? item.profileEffect ?? item.border ?? null} />
+                                                              </div>
+                                                              <span className="text-[10px] text-white/70 text-center truncate w-full">{(item.cursor ?? item.effect ?? item.background ?? item.profileEffect ?? item.border)?.name}</span>
                                                             </>
                                                         ) : item.type === 'coins' ? (
                                                             <>
@@ -919,25 +975,10 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                 {activeRollType === 'cursor' ? (
                                                     // Cursor/Effect crate reveal
                                                     spinResult?.type === 'cursor' && spinResult.cursorInfo ? (
-                                                        <div className="relative">
-                                                            <div
-                                                                className="absolute inset-0 blur-3xl opacity-40"
-                                                                style={{ backgroundColor: spinResult.cursorInfo.color }}
-                                                            />
-                                                            <motion.div
-                                                            initial={{ scaleY: 0.82, opacity: 0 }}
-                                                            animate={{ scaleY: 1, opacity: 1 }}
-                                                            transition={{ duration: 0.32, ease: 'easeOut' }}
-                                                            className="relative h-24 w-3 rounded-full"
-                                                                style={{
-                                                                    backgroundColor: spinResult.cursorInfo.color === 'rainbow' ? '#ec4899' : spinResult.cursorInfo.color,
-                                                                boxShadow: `0 0 18px ${spinResult.cursorInfo.glow}`,
-                                                                }}
-                                                            />
-                                                        </div>
+                                                        <div className="w-40 h-28 flex justify-center items-center"><CosmeticPreview kind="cursor" item={spinResult.cursorInfo} active /></div>
                                                     ) : spinResult?.type === 'effect' && spinResult.effectInfo ? (
                                                         <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }}>
-                                                            <EffectIcon color={spinResult.effectInfo.color} size={80} />
+                                                            <div className="w-44"><CosmeticPreview kind="effect" item={spinResult.effectInfo} active /></div>
                                                         </motion.div>
                                                     ) : spinResult?.type === 'nothing' ? (
                                                         <div className="flex flex-col items-center">
@@ -971,30 +1012,9 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                             />
                                                         </motion.div>
                                                     ) : profileSpinResult?.type === 'profile_effect' && profileSpinResult.effectInfo ? (
-                                                        <motion.div
-                                                            initial={{ scale: 0.85, opacity: 0 }}
-                                                            animate={{ scale: 1, opacity: 1 }}
-                                                            transition={{ duration: 0.3 }}
-                                                            className="flex h-20 w-20 items-center justify-center rounded-full"
-                                                            style={{
-                                                                backgroundColor: `${profileSpinResult.effectInfo.color}30`,
-                                                                border: `2px solid ${profileSpinResult.effectInfo.color}`
-                                                            }}
-                                                        >
-                                                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={profileSpinResult.effectInfo.color} strokeWidth="2">
-                                                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                                                            </svg>
-                                                        </motion.div>
+                                                        <div className="relative w-44 h-28 flex items-center justify-center"><CosmeticPreview kind="profile_effect" item={profileSpinResult.effectInfo} active /></div>
                                                     ) : profileSpinResult?.type === 'border' && profileSpinResult.borderInfo ? (
-                                                        <motion.div
-                                                            initial={{ scale: 0.85, opacity: 0 }}
-                                                            animate={{ scale: 1, opacity: 1 }}
-                                                            transition={{ duration: 0.3 }}
-                                                            className="h-20 w-20 rounded-full"
-                                                            style={{
-                                                                border: `${profileSpinResult.borderInfo.width * 2}px ${profileSpinResult.borderInfo.style === 'gradient' ? 'solid' : profileSpinResult.borderInfo.style} ${profileSpinResult.borderInfo.color || '#22d3ee'}`,
-                                                            }}
-                                                        />
+                                                        <div className="relative w-36 h-28 flex items-center justify-center"><CosmeticPreview kind="border" item={profileSpinResult.borderInfo} active /></div>
                                                     ) : profileSpinResult?.type === 'nothing' ? (
                                                         <div className="flex flex-col items-center">
                                                             <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/15 bg-white/[0.03]">
@@ -1078,36 +1098,13 @@ export default function ShopModal({ isOpen, onClose }: ShopModalProps) {
                                                         animate={{ opacity: 1 }}
                                                     >
                                                         <motion.div
-                                                            className={`h-full ${activeRollType === 'cursor' ? 'bg-purple-500' : 'bg-cyan-500'}`}
-                                                            initial={{ width: '0%' }}
-                                                            animate={{ width: '100%' }}
-                                                            transition={{ duration: 1.5, ease: 'linear' }}
-                                                            onAnimationComplete={() => {
-                                                                const cost = activeRollType === 'cursor'
-                                                                    ? (leaderboardBonus?.gachaDiscountedCost ?? SPIN_COST)
-                                                                    : (leaderboardBonus?.profileDiscountedCost ?? PROFILE_SPIN_COST)
-
-                                                                // Seamless auto-spin: check coins and trigger next spin immediately
-                                                                // without going back to 'crates' phase
-                                                                if (coins >= cost) {
-                                                                    if (activeRollType === 'cursor') {
-                                                                        handleOpenCrate()
-                                                                    } else {
-                                                                        handleOpenProfileCrate()
-                                                                    }
-                                                                } else {
-                                                                    // Not enough coins, disable auto spin and return to crates
-                                                                    if (activeRollType === 'cursor') {
-                                                                        setAutoSpinCursor(false)
-                                                                    } else {
-                                                                        setAutoSpinProfile(false)
-                                                                    }
-                                                                    setPhase('crates')
-                                                                }
-                                                            }}
+                                                            className={`h-full origin-left ${activeRollType === 'cursor' ? 'bg-purple-500' : 'bg-cyan-500'}`}
+                                                            initial={{ scaleX: 0 }}
+                                                            animate={{ scaleX: 1 }}
+                                                            transition={{ duration: AUTO_SPIN_DELAY_MS / 1000, ease: 'linear' }}
                                                         />
                                                     </motion.div>
-                                                    <span className="text-[10px] text-white/40 mt-2 inline-block">Auto spinning...</span>
+                                                    <span className="text-[10px] text-white/40 mt-2 inline-block">Next roll starting…</span>
                                                 </div>
                                             )}
 

@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
+import { createPortal } from 'react-dom'
 import { getEffectVisual, type EffectFamily } from '../effects/visuals'
 
 interface Particle {
@@ -26,17 +27,29 @@ interface Particle {
   glyph?: string
 }
 
+interface TrailPoint { x: number; y: number; at: number }
+
 interface CursorEffectProps {
   effectId: string | null
+  targetRef?: RefObject<HTMLElement>
+  caret?: 'player' | 'opponent'
+  progress?: string | number
 }
 
 const MAX_PARTICLES = 64
 const PIXEL_RATIO_LIMIT = 1.5
 const FRAME_BUDGET_MS = 34
 
-export default function CursorEffect({ effectId }: CursorEffectProps) {
+export default function CursorEffect({ effectId, targetRef, caret, progress }: CursorEffectProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pointerRef = useRef({ x: 0, y: 0, active: false })
+
+  const wakeRef = useRef<(() => void) | null>(null)
+  const movingUntilRef = useRef(0)
+  useLayoutEffect(() => {
+    movingUntilRef.current = performance.now() + 240
+    wakeRef.current?.()
+  }, [progress])
 
   useEffect(() => {
     if (!effectId || effectId === 'none' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
@@ -50,6 +63,7 @@ export default function CursorEffect({ effectId }: CursorEffectProps) {
     let particles: Particle[] = []
     let width = 0
     let height = 0
+    let trailPoints: TrailPoint[] = []
     let lastFrameAt = 0
     let lastSpawnAt = 0
     let lastX = pointerRef.current.x
@@ -59,6 +73,17 @@ export default function CursorEffect({ effectId }: CursorEffectProps) {
       frameId = null
       const elapsed = lastFrameAt ? Math.min(FRAME_BUDGET_MS, time - lastFrameAt) : 16.67
       lastFrameAt = time
+      const surface = targetRef?.current?.getBoundingClientRect()
+      if (targetRef) {
+        const element = targetRef.current?.querySelector<HTMLElement>(`[data-caret="${caret}"]`)
+        const rect = element?.getBoundingClientRect()
+        if (rect && surface) {
+          const x = rect.left - surface.left
+          const y = rect.top + rect.height / 2 - surface.top
+          if (!pointerRef.current.active) { lastX = x; lastY = y }
+          pointerRef.current = { x, y, active: true }
+        } else pointerRef.current.active = false
+      }
       const pointer = pointerRef.current
       const dx = pointer.x - lastX
       const dy = pointer.y - lastY
@@ -76,6 +101,13 @@ export default function CursorEffect({ effectId }: CursorEffectProps) {
       }
 
       context.clearRect(0, 0, width, height)
+      context.save()
+      const trailPoint = trailPoints[trailPoints.length - 1]
+      if (pointer.active && (!trailPoint || Math.hypot(pointer.x - trailPoint.x, pointer.y - trailPoint.y) > 1.1)) {
+        trailPoints.push({ x: pointer.x, y: pointer.y, at: time })
+      }
+      trailPoints = trailPoints.filter(point => time - point.at < 420).slice(-16)
+      drawCursorTail(context, trailPoints, time, visual.color)
       const alive: Particle[] = []
       for (const particle of particles) {
         updateParticle(particle, elapsed)
@@ -84,11 +116,12 @@ export default function CursorEffect({ effectId }: CursorEffectProps) {
           alive.push(particle)
         }
       }
+      context.restore()
       particles = alive.slice(-MAX_PARTICLES)
       lastX = pointer.x
       lastY = pointer.y
 
-      if (particles.length > 0) frameId = requestAnimationFrame(tick)
+      if (particles.length > 0 || trailPoints.length > 1 || (targetRef && time < movingUntilRef.current)) frameId = requestAnimationFrame(tick)
     }
 
     const scheduleFrame = () => {
@@ -97,12 +130,22 @@ export default function CursorEffect({ effectId }: CursorEffectProps) {
 
     const resize = () => {
       const ratio = Math.min(window.devicePixelRatio || 1, PIXEL_RATIO_LIMIT)
-      width = window.innerWidth
-      height = window.innerHeight
-      canvas.width = Math.round(width * ratio)
-      canvas.height = Math.round(height * ratio)
+      const surface = targetRef?.current?.getBoundingClientRect()
+      width = surface?.width ?? window.innerWidth
+      height = surface?.height ?? window.innerHeight
+      canvas.width = Math.max(1, Math.round(width * ratio))
+      canvas.height = Math.max(1, Math.round(height * ratio))
       canvas.style.width = `${width}px`
       canvas.style.height = `${height}px`
+      if (surface) {
+        canvas.style.inset = 'auto'
+        canvas.style.left = `${surface.left}px`
+        canvas.style.top = `${surface.top}px`
+      } else {
+        canvas.style.inset = '0'
+        canvas.style.left = '0'
+        canvas.style.top = '0'
+      }
       context.setTransform(ratio, 0, 0, ratio, 0, 0)
       scheduleFrame()
     }
@@ -124,8 +167,11 @@ export default function CursorEffect({ effectId }: CursorEffectProps) {
       context.clearRect(0, 0, width, height)
     }
 
+    wakeRef.current = scheduleFrame
     resize()
-    window.addEventListener('pointermove', handlePointerMove, { passive: true })
+    const resizeObserver = targetRef?.current ? new ResizeObserver(resize) : null
+    if (targetRef?.current) resizeObserver?.observe(targetRef.current)
+    if (!targetRef) window.addEventListener('pointermove', handlePointerMove, { passive: true })
     document.documentElement.addEventListener('pointerleave', clearTrail, { passive: true })
     document.addEventListener('visibilitychange', clearTrail)
     window.addEventListener('blur', clearTrail)
@@ -138,19 +184,58 @@ export default function CursorEffect({ effectId }: CursorEffectProps) {
       document.removeEventListener('visibilitychange', clearTrail)
       window.removeEventListener('blur', clearTrail)
       window.removeEventListener('resize', resize)
+      resizeObserver?.disconnect()
+      wakeRef.current = null
       particles = []
+      trailPoints = []
+      pointerRef.current.active = false
       context.clearRect(0, 0, width, height)
     }
-  }, [effectId])
+  }, [effectId, targetRef, caret])
 
-  return (
+  const canvas = (
     <canvas
       ref={canvasRef}
       aria-hidden="true"
+      data-trail={caret ?? 'pointer'}
       className="pointer-events-none fixed inset-0 z-[9999]"
       style={{ width: '100vw', height: '100dvh' }}
     />
   )
+  return targetRef ? createPortal(canvas, document.body) : canvas
+}
+
+function drawCursorTail(context: CanvasRenderingContext2D, points: TrailPoint[], time: number, color: string) {
+  if (points.length < 2) return
+  const visible = points.filter(point => time - point.at < 360)
+  if (visible.length < 2) return
+  const newest = visible[visible.length - 1]
+  const oldest = visible[0]
+  const fade = Math.max(0, 1 - (time - oldest.at) / 420)
+  const gradient = context.createLinearGradient(newest.x, newest.y, oldest.x, oldest.y)
+  gradient.addColorStop(0, rgba(color, 0.72))
+  gradient.addColorStop(0.35, rgba(color, 0.36))
+  gradient.addColorStop(1, rgba(color, 0.02))
+  context.globalAlpha = fade
+  context.strokeStyle = gradient
+  context.lineWidth = 3.6
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+  context.shadowColor = color
+  context.shadowBlur = 8
+  context.beginPath()
+  context.moveTo(newest.x, newest.y)
+  for (let index = visible.length - 1; index > 0; index--) {
+    const current = visible[index]
+    const previous = visible[index - 1]
+    const middleX = (current.x + previous.x) / 2
+    const middleY = (current.y + previous.y) / 2
+    context.quadraticCurveTo(current.x, current.y, middleX, middleY)
+  }
+  context.lineTo(oldest.x, oldest.y)
+  context.stroke()
+  context.shadowBlur = 0
+  context.globalAlpha = 1
 }
 
 function createParticle(

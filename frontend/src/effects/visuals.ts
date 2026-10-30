@@ -1,3 +1,4 @@
+import collections from '../data/cosmetics.json'
 import { EFFECTS } from '../types'
 
 export type EffectFamily =
@@ -76,7 +77,11 @@ for (const [family, ids] of Object.entries(familyGroups) as [EffectFamily, reado
   for (const id of ids) effectFamily.set(id, family)
 }
 
+for (const c of collections) effectFamily.set(c.id, c.family as EffectFamily)
+const collectionVisuals = new Map(collections.map(c => [c.id, c]))
+
 export function getEffectVisual(effectId: string, colorOverride?: string): EffectVisual {
+  const collection = collectionVisuals.get(effectId)
   const family = effectFamily.get(effectId) ?? 'spark'
   const color = colorOverride && colorOverride !== 'rainbow'
     ? colorOverride
@@ -87,9 +92,9 @@ export function getEffectVisual(effectId: string, colorOverride?: string): Effec
   return {
     family,
     color,
-    palette: familyPalette[family]
+    palette: collection ? [collection.color, collection.accent, '#ffffff'] : familyPalette[family]
       ? [...new Set([color, ...familyPalette[family]])]
       : [color],
-    glyph: glyphs[effectId],
+    glyph: glyphs[effectId] ?? (family === 'glyph' ? (collection?.finish === 'circuit' ? '∞' : '✧') : undefined),
   }
 }

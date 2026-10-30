@@ -1,3 +1,4 @@
+import cosmeticCollections from '../data/cosmetics.json'
 /*   ______      __ ____  _______       _  ____  _   _ 
  *  |  ____|   / / __ \|__   __|/\   | |/ __ \| \ | |
  *  | |__   _ / / |  | |  | |  /  \  | | |  | |  \| |
@@ -589,4 +590,13 @@ export const getProfileEffectInfo = (effectId: string | null): ProfileEffectInfo
 export const getProfileBorderInfo = (borderId: string | null): ProfileBorderInfo | null => {
   if (!borderId) return null
   return PROFILE_BORDERS[borderId] || null
+}
+
+// Collection IDs are immutable: inventories and old match snapshots remain valid.
+for (const collection of cosmeticCollections) {
+  const { id, name, color, accent, rarity, motion } = collection
+  CURSORS[id] = { id, name, color, glow: accent, rarity: rarity as CursorRarity }
+  EFFECTS[id] = { id, name: `${name} Trail`, color, rarity: rarity as EffectRarity }
+  PROFILE_EFFECTS[id] = { id, name: `${name} Scene`, color, animation: motion, rarity: rarity as CursorRarity }
+  PROFILE_BORDERS[id] = { id, name: `${name} Crest`, color, colors: [color, accent], style: collection.variant % 4 === 0 ? 'double' : 'solid', width: 3, animation: motion, rarity: rarity as CursorRarity }
 }

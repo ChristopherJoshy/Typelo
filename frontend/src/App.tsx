@@ -60,7 +60,7 @@ const TypeloVsTypeRacer = lazy(() => import('./components/compare/TypeloVsTypeRa
 function App() {
   const { user, loading, idToken } = useAuthStore()
   const { status: connectionStatus, startHealthCheck, stopHealthCheck } = useConnectionStore()
-  const { equippedEffect, fetchInventory } = useInventoryStore()
+  const { equippedEffect, fetchInventory, fetchProfileInventory } = useInventoryStore()
   const { pathname } = useLocation()
   const gameStatus = useGameStore(state => state.status)
 
@@ -111,9 +111,9 @@ function App() {
   // Fetch inventory to get equipped effect if user logged in
   useEffect(() => {
     if (user && idToken) {
-      fetchInventory(idToken)
+      void Promise.all([fetchInventory(idToken), fetchProfileInventory(idToken)])
     }
-  }, [user, idToken])
+  }, [user, idToken, fetchInventory, fetchProfileInventory])
 
   // The backend health check must not block login or public pages.
   if (loading) {
@@ -137,7 +137,7 @@ function App() {
           <title>{pageTitle}</title>
         </Helmet>
         {user && connectionStatus === 'disconnected' && <ConnectionError />}
-        <CursorEffect effectId={equippedEffect} />
+        <CursorEffect effectId={pathname.startsWith('/game/') ? null : equippedEffect} />
         <WebSocketProvider>
           <Layout>
             <Suspense fallback={

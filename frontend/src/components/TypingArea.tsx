@@ -39,11 +39,12 @@
  * stores: Game store.
  */
 
-import React, { RefObject, KeyboardEvent, ChangeEvent, useMemo, useEffect, useRef, useState, useCallback, memo } from 'react'
+import React, { RefObject, KeyboardEvent, ChangeEvent, useMemo, useEffect, useRef, useState, memo } from 'react'
 import { motion } from 'framer-motion'
 import { useGameStore } from '../stores/gameStore'
 import { CursorInfo, EffectInfo, getCursorInfo, getEffectInfo } from '../types'
-import { getEffectVisual } from '../effects/visuals'
+import CursorEffect from './CursorEffect'
+import { getCursorStyle } from '../effects/cursors'
 
 // --- Types ---
 interface TypingAreaProps {
@@ -58,69 +59,6 @@ interface TypingAreaProps {
   playerEffect?: string | null
   opponentEffect?: string | null
 }
-
-// One small burst per moving cursor every 100 ms keeps expensive cosmetic
-// particles readable on mobile while the underlying carets still move on each
-// accepted input update.
-let lastPlayerBurstAt = 0
-let lastOpponentBurstAt = 0
-
-// Compact, effect-specific bursts. Fixed offsets avoid a different animation
-// on every React render and keep multiplayer typing light on slower devices.
-const CursorBurst = memo(({ type, color, onComplete }: { type: string, color: string, onComplete?: () => void }) => {
-  const visual = useMemo(() => getEffectVisual(type, color), [type, color])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => onComplete?.(), 620)
-    return () => window.clearTimeout(timer)
-  }, [onComplete])
-
-  const isRing = visual.family === 'ripple' || visual.family === 'halo' || visual.family === 'void'
-  const isGlyph = visual.family === 'glyph' || visual.family === 'digital'
-  const isPetal = visual.family === 'petal' || visual.family === 'flame' || visual.family === 'mist'
-  const glyph = visual.glyph ?? (visual.family === 'digital' ? '▪' : visual.family === 'cosmic' ? '✦' : '·')
-  const particles = [
-    { x: -8, y: -8, delay: 0 },
-    { x: 8, y: -4, delay: 0.035 },
-    { x: 1, y: 7, delay: 0.07 },
-  ]
-
-  return (
-    <span className="absolute inset-0 z-30 flex items-center justify-center overflow-visible pointer-events-none" aria-hidden="true">
-      {particles.map((particle, index) => {
-        const particleColor = visual.palette[index % visual.palette.length]
-        return (
-          <motion.span
-            key={`${type}-${index}`}
-            className={`absolute ${isRing ? 'rounded-full border' : isGlyph ? 'font-mono font-semibold' : 'rounded-full'} ${isPetal ? 'rounded-tl-full rounded-br-full' : ''}`}
-            style={{
-              width: isGlyph ? 'auto' : isRing ? 7 : 3,
-              height: isGlyph ? 'auto' : isRing ? 7 : 3,
-              color: particleColor,
-              borderColor: isRing ? particleColor : undefined,
-              backgroundColor: isRing || isGlyph ? 'transparent' : particleColor,
-              boxShadow: `0 0 6px ${particleColor}80`,
-              fontSize: 9,
-              lineHeight: 1,
-            }}
-            initial={{ opacity: 0.9, x: 0, y: 0, scale: 0.65, rotate: 0 }}
-            animate={{
-              opacity: 0,
-              x: particle.x,
-              y: particle.y,
-              scale: isRing ? 1.8 : 0.8,
-              rotate: isPetal ? (index - 1) * 36 : 0,
-            }}
-            transition={{ duration: 0.48, delay: particle.delay, ease: [0.2, 0.7, 0.2, 1] }}
-          >
-            {isGlyph ? glyph : null}
-          </motion.span>
-        )
-      })}
-    </span>
-  )
-})
-
 
 // --- Character Component (Memoized) ---
 const MemoizedCharacter = memo(({
@@ -144,42 +82,6 @@ const MemoizedCharacter = memo(({
   opponentConfig: { cursor: CursorInfo, effect: EffectInfo | null }
   priorityUser: string
 }) => {
-
-  // State to track if burst should be shown (ephemeral)
-  const [showPlayerBurst, setShowPlayerBurst] = useState(false)
-  const [showOpponentBurst, setShowOpponentBurst] = useState(false)
-
-  // Ref to prevent re-triggering burst if status doesn't change meaningfully
-  const prevStatusRef = useRef(status)
-  const prevOppPastRef = useRef(isOpponentPast)
-
-  // Trigger Player Burst
-  useEffect(() => {
-    if (playerConfig.effect && status === 'correct' && prevStatusRef.current !== 'correct') {
-      const now = performance.now()
-      if (now - lastPlayerBurstAt >= 100) {
-        lastPlayerBurstAt = now
-        setShowPlayerBurst(true)
-      }
-    }
-    prevStatusRef.current = status
-  }, [status, playerConfig.effect])
-
-  // Trigger Opponent Burst
-  useEffect(() => {
-    if (opponentConfig.effect && isOpponentPast && !prevOppPastRef.current) {
-      const now = performance.now()
-      if (now - lastOpponentBurstAt >= 100) {
-        lastOpponentBurstAt = now
-        setShowOpponentBurst(true)
-      }
-    }
-    prevOppPastRef.current = isOpponentPast
-  }, [isOpponentPast, opponentConfig.effect])
-
-  // Handlers to cleanup bursts
-  const handlePlayerBurstComplete = useCallback(() => setShowPlayerBurst(false), [])
-  const handleOpponentBurstComplete = useCallback(() => setShowOpponentBurst(false), [])
 
   // Styling logic
   let charStyle: React.CSSProperties = {}
@@ -250,28 +152,14 @@ const MemoizedCharacter = memo(({
         />
       )}
 
-      {/* Bursts */}
-      {showOpponentBurst && opponentConfig.effect && (
-        <CursorBurst
-          type={opponentConfig.effect.id}
-          color={opponentConfig.effect.color}
-          onComplete={handleOpponentBurstComplete}
-        />
-      )}
-      {showPlayerBurst && playerConfig.effect && (
-        <CursorBurst
-          type={playerConfig.effect.id}
-          color={playerConfig.effect.color}
-          onComplete={handlePlayerBurstComplete}
-        />
-      )}
-
       {/* Player Cursor */}
       {isCurrentChar && playerConfig.cursor && (
         <motion.span
           layoutId="player-cursor"
+          data-caret="player"
           className="absolute -left-[1px] top-0 w-[5px] h-full rounded-full z-10"
           style={{
+            ...getCursorStyle(playerConfig.cursor.id),
             backgroundColor: playerConfig.cursor.color === 'rainbow' ? '#ec4899' : playerConfig.cursor.color,
             boxShadow: `0 0 16px ${playerConfig.cursor.glow}`, // Increased Glow
           }}
@@ -289,8 +177,10 @@ const MemoizedCharacter = memo(({
       {/* Opponent Cursor - has distinct outline to differentiate from player cursor */}
       {isOpponentHere && opponentConfig.cursor && (
         <motion.span
+          data-caret="opponent"
           className="absolute -left-[2px] top-0 w-[8px] h-full z-5 rounded-full"
           style={{
+            ...getCursorStyle(opponentConfig.cursor.id),
             backgroundColor: opponentConfig.cursor.color === 'rainbow' ? '#ec4899' : opponentConfig.cursor.color,
             boxShadow: `0 0 20px ${opponentConfig.cursor.glow}, inset 0 0 0 1px rgba(0,0,0,0.5)`, // Increased Glow
             border: '2px solid rgba(255,255,255,0.4)', // Thicker border
@@ -434,8 +324,10 @@ const MemoizedWord = memo(({
       {isCurrentWord && currentCharIndex >= word.length && (
         <motion.span
           layoutId="player-cursor"
+          data-caret="player"
           className="absolute right-0 top-0 w-[5px] h-full rounded-full"
           style={{
+            ...getCursorStyle(playerConfig.cursor.id),
             backgroundColor: playerConfig.cursor.color === 'rainbow' ? '#ec4899' : playerConfig.cursor.color,
             boxShadow: `0 0 16px ${playerConfig.cursor.glow}`,
             transform: 'translateX(100%)',
@@ -453,8 +345,10 @@ const MemoizedWord = memo(({
 
       {wordIdx === opponentWordIndex && opponentCharIndex - words.slice(0, wordIdx).reduce((sum, w) => sum + w.length + 1, 0) >= word.length && (
         <motion.span
+          data-caret="opponent"
           className="absolute right-0 top-0 w-[8px] h-full rounded-full"
           style={{
+            ...getCursorStyle(opponentConfig.cursor.id),
             backgroundColor: opponentConfig.cursor.color === 'rainbow' ? '#ec4899' : opponentConfig.cursor.color,
             boxShadow: `0 0 20px ${opponentConfig.cursor.glow}, inset 0 0 0 1px rgba(0,0,0,0.5)`,
             border: '2px solid rgba(255,255,255,0.4)',
@@ -688,6 +582,8 @@ export default function TypingArea({
         />
       )}
 
+      <CursorEffect effectId={playerEffect} targetRef={containerRef} caret="player" progress={`${currentWordIndex}:${currentCharIndex}`} />
+      <CursorEffect effectId={opponentEffect} targetRef={containerRef} caret="opponent" progress={opponentCharIndex} />
       {/* Main Text Container */}
       <div
         ref={containerRef}
