@@ -108,8 +108,9 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
       if (pointer.active && (!trailPoint || Math.hypot(pointer.x - trailPoint.x, pointer.y - trailPoint.y) > 1.1)) {
         trailPoints.push({ x: pointer.x, y: pointer.y, at: time })
       }
-      trailPoints = trailPoints.filter(point => time - point.at < 420).slice(-16)
-      drawCursorTail(context, trailPoints, time, visual)
+      const trailLifetime = targetRef ? 1750 : 620
+      trailPoints = trailPoints.filter(point => time - point.at < trailLifetime).slice(-18)
+      drawCursorTail(context, trailPoints, time, visual, targetRef ? 6 : 2, trailLifetime)
       const alive: Particle[] = []
       for (const particle of particles) {
         updateParticle(particle, elapsed)
@@ -227,15 +228,24 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
   return createPortal(canvas, document.body)
 }
 
-function drawCursorTail(context: CanvasRenderingContext2D, points: TrailPoint[], time: number, visual: ReturnType<typeof getEffectVisual>) {
+function drawCursorTail(
+  context: CanvasRenderingContext2D,
+  points: TrailPoint[],
+  time: number,
+  visual: ReturnType<typeof getEffectVisual>,
+  minimumPoints: number,
+  lifetime: number,
+) {
   if (points.length < 2) return
-  const visible = points.filter(point => time - point.at < 360)
+  let visible = points.filter(point => time - point.at < lifetime)
+  if (visible.length < minimumPoints && points.length >= minimumPoints) visible = points.slice(-minimumPoints)
   if (visible.length < 2) return
   const newest = visible[visible.length - 1]
   const oldest = visible[0]
-  const fade = Math.max(0, 1 - (time - oldest.at) / 420)
+  const fade = Math.max(0, 1 - (time - newest.at) / lifetime)
   const color = visual.color
   const palette = visual.palette
+  drawSmokeRibbon(context, visible, time, color, fade, minimumPoints)
   const gradient = context.createLinearGradient(newest.x, newest.y, oldest.x, oldest.y)
   gradient.addColorStop(0, rgba(palette[0] ?? color, 0.82))
   gradient.addColorStop(0.28, rgba(palette[1] ?? color, 0.48))
@@ -287,6 +297,35 @@ function drawCursorTail(context: CanvasRenderingContext2D, points: TrailPoint[],
   context.setLineDash([])
   context.shadowBlur = 0
   context.globalAlpha = 1
+}
+
+function drawSmokeRibbon(context: CanvasRenderingContext2D, points: TrailPoint[], time: number, color: string, fade: number, minimumPoints: number) {
+  const ribbon = points.slice(-Math.max(minimumPoints, 8))
+  if (ribbon.length < 2) return
+  context.save()
+  context.globalAlpha = fade
+  for (let index = 0; index < ribbon.length - 1; index++) {
+    const point = ribbon[index]
+    const distanceFromHead = (ribbon.length - 1 - index) / Math.max(1, ribbon.length - 1)
+    const radius = 5 + distanceFromHead * 8
+    const drift = Math.sin(time * .0017 + index * 1.7) * (1 + distanceFromHead * 2)
+    const x = point.x + drift
+    const y = point.y - distanceFromHead * 2
+    const opacity = (visualSmokeOpacity(color) + (1 - distanceFromHead) * .05) * (1 - distanceFromHead * .28)
+    const puff = context.createRadialGradient(x, y, 0, x, y, radius)
+    puff.addColorStop(0, rgba(color, opacity))
+    puff.addColorStop(.42, rgba(color, opacity * .38))
+    puff.addColorStop(1, rgba(color, 0))
+    context.fillStyle = puff
+    context.beginPath()
+    context.arc(x, y, radius, 0, Math.PI * 2)
+    context.fill()
+  }
+  context.restore()
+}
+
+function visualSmokeOpacity(color: string) {
+  return color === '#ffffff' ? .09 : .14
 }
 
 function createParticle(

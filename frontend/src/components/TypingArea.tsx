@@ -178,7 +178,7 @@ const MemoizedCharacter = memo(({
       {isOpponentHere && opponentConfig.cursor && (
         <motion.span
           data-caret="opponent"
-          className="absolute -left-[2px] top-0 w-[8px] h-full z-5 rounded-full"
+          className="absolute -left-[2px] top-0 w-[8px] h-full z-20 rounded-full"
           style={{
             ...getCursorStyle(opponentConfig.cursor.id),
             backgroundColor: opponentConfig.cursor.color === 'rainbow' ? '#ec4899' : opponentConfig.cursor.color,
@@ -346,7 +346,7 @@ const MemoizedWord = memo(({
       {wordIdx === opponentWordIndex && opponentCharIndex - words.slice(0, wordIdx).reduce((sum, w) => sum + w.length + 1, 0) >= word.length && (
         <motion.span
           data-caret="opponent"
-          className="absolute right-0 top-0 w-[8px] h-full rounded-full"
+          className="absolute right-0 top-0 w-[8px] h-full z-20 rounded-full"
           style={{
             ...getCursorStyle(opponentConfig.cursor.id),
             backgroundColor: opponentConfig.cursor.color === 'rainbow' ? '#ec4899' : opponentConfig.cursor.color,
