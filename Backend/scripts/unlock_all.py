@@ -18,7 +18,6 @@ load_dotenv(env_path)
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 MONGODB_DATABASE = os.getenv("MONGODB_DATABASE", "evotaion")
 
-TARGET_USER_UID = "xOAB2eOuwpcsSBgbLxOfGMEWF5f1"
 EXPECTED_DISPLAY_NAME = "Christopher Joshy"
 
 async def unlock_all():
@@ -30,16 +29,23 @@ async def unlock_all():
         await client.admin.command('ping')
         print("Connected.")
     except Exception as e:
-        print(f"Connection failed: {e}")
-        return
-
-    account = await db.users.find_one(
-        {"firebase_uid": TARGET_USER_UID}, {"display_name": 1, "_id": 0}
-    )
-    if not account or account.get("display_name") != EXPECTED_DISPLAY_NAME:
-        print("The target account did not match the signed-in profile; no changes made.")
+        print(f"Connection failed ({type(e).__name__}); no changes made.")
         await client.close()
         return
+
+    # Avoid storing a personal Firebase UID in source; require a unique Gmail profile.
+    candidates = await db.users.find(
+        {
+            "display_name": EXPECTED_DISPLAY_NAME,
+            "email": {"$regex": r"@gmail\.com$", "$options": "i"},
+        },
+        {"firebase_uid": 1, "_id": 0},
+    ).limit(2).to_list(length=2)
+    if len(candidates) != 1 or not candidates[0].get("firebase_uid"):
+        print("No unique Gmail account matched the expected profile; no changes made.")
+        await client.close()
+        return
+    target_uid = candidates[0]["firebase_uid"]
 
     # Prepare all items
     all_items = {
@@ -53,7 +59,11 @@ async def unlock_all():
     print(f"Adding the complete cosmetic catalog for the target account in {MONGODB_DATABASE}...")
 
     result = await db.users.update_one(
-        {"firebase_uid": TARGET_USER_UID},
+        {
+            "firebase_uid": target_uid,
+            "display_name": EXPECTED_DISPLAY_NAME,
+            "email": {"$regex": r"@gmail\.com$", "$options": "i"},
+        },
         {"$addToSet": {field: {"$each": item_ids} for field, item_ids in all_items.items()}},
     )
     
