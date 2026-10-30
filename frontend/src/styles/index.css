@@ -1384,3 +1384,68 @@ body,
 .inventory-eyebrow,.inventory-header p,.cosmetic-cursor-caption,.inventory-demo-heading,.inventory-selection p,.inventory-rarity,.inventory-hint { display:none; }
 .inventory-header h2 { margin:0; }
 @media (max-width:700px) { .inventory-demo-line { padding:0 10px; } }
+
+/* Signature motion layers: precise, character-led animation without heavier raster assets. */
+.typelo-profile-effect-frame .cosmetic-profile-orbit,
+.typelo-profile-effect-frame .cosmetic-profile-flare { position:absolute; pointer-events:none; inset:9%; border-radius:48% 52% 46% 54%; }
+.cosmetic-profile-orbit { border:1px solid color-mix(in srgb,var(--cosmetic-color) 28%,transparent); opacity:.22; transform:rotate(var(--cosmetic-rotation)); }
+.cosmetic-profile-orbit-a { inset:8% 5%; border-style:dashed; }
+.cosmetic-profile-orbit-b { inset:17% 11%; border-color:color-mix(in srgb,var(--cosmetic-accent) 25%,transparent); border-style:dotted; transform:rotate(calc(var(--cosmetic-rotation) * -1)); }
+.cosmetic-profile-flare { inset:-12%; border:0; border-radius:inherit; background:linear-gradient(112deg,transparent 32%,color-mix(in srgb,var(--cosmetic-highlight) 13%,transparent) 48%,transparent 61%); opacity:0; }
+.typelo-profile-effect-frame[data-active="true"] .cosmetic-profile-orbit-a { animation:profile-orbit-turn calc(var(--cosmetic-duration,4s) * 2.6) linear infinite; }
+.typelo-profile-effect-frame[data-active="true"] .cosmetic-profile-orbit-b { animation:profile-orbit-turn calc(var(--cosmetic-duration,4s) * 3.8) linear infinite reverse; }
+.typelo-profile-effect-frame[data-active="true"] .cosmetic-profile-flare { animation:profile-flare-pass calc(var(--cosmetic-duration,4s) * 1.4) ease-in-out infinite; }
+.typelo-profile-effect-frame[data-motion="vortex"][data-active="true"] > .cosmetic-sigil { animation:profile-vortex var(--cosmetic-duration,4s) ease-in-out infinite; }
+.typelo-profile-effect-frame[data-motion="slash"][data-active="true"] > .cosmetic-sigil,
+.typelo-profile-effect-frame[data-motion="step"][data-active="true"] > .cosmetic-sigil { animation:profile-slash var(--cosmetic-duration,4s) cubic-bezier(.2,.8,.3,1) infinite; }
+.typelo-profile-effect-frame[data-motion="inkfall"][data-active="true"] > .cosmetic-sigil { animation:profile-inkfall var(--cosmetic-duration,4s) ease-in infinite; }
+.typelo-profile-effect-frame[data-motion="bloom"][data-active="true"] > .cosmetic-sigil { animation:profile-bloom var(--cosmetic-duration,4s) ease-in-out infinite; }
+.typelo-profile-effect-frame[data-motion="storm"][data-active="true"] > .cosmetic-sigil,
+.typelo-profile-effect-frame[data-motion="rift"][data-active="true"] > .cosmetic-sigil { animation:profile-storm 1.8s steps(2,end) infinite; }
+.typelo-profile-effect-frame[data-motion="shard"][data-active="true"] > .cosmetic-sigil { animation:profile-shard var(--cosmetic-duration,4s) ease-in-out infinite; }
+.typelo-profile-effect-frame[data-motion="breath"][data-active="true"] > .cosmetic-sigil { animation:profile-breath var(--cosmetic-duration,4s) ease-in-out infinite; }
+.typelo-profile-effect-frame[data-motion="flourish"][data-active="true"] > .cosmetic-sigil { animation:profile-flourish var(--cosmetic-duration,4s) ease-in-out infinite; }
+.typelo-profile-effect-frame[data-motion="surge"][data-active="true"] > .cosmetic-profile-flare { animation:profile-surge 2.6s cubic-bezier(.16,1,.3,1) infinite; }
+.typelo-profile-effect-frame[data-motif="shuriken"] .cosmetic-edge,
+.typelo-profile-effect-frame[data-motif="eye_sigil"] .cosmetic-edge,
+.typelo-profile-effect-frame[data-motif="compass"] .cosmetic-edge,
+.typelo-profile-effect-frame[data-motif="four_clover"] .cosmetic-edge { border-style:dashed; }
+@keyframes profile-orbit-turn { to { transform:rotate(360deg); } }
+@keyframes profile-flare-pass { 0%,100% { transform:translateX(-16%) rotate(-7deg); opacity:0; } 45%,60% { opacity:.75; } }
+@keyframes profile-vortex { 0%,100% { transform:translateY(2px) rotate(-16deg) scale(.84); opacity:.45; } 50% { transform:translateY(-3px) rotate(28deg) scale(1.18); opacity:1; } }
+@keyframes profile-slash { 0%,75%,100% { transform:translate(-3px,3px) rotate(-16deg) scale(.78); opacity:.25; } 18%,45% { transform:translate(2px,-2px) rotate(18deg) scale(1.16); opacity:1; } }
+@keyframes profile-inkfall { 0%,100% { transform:translateY(-5px) scale(.82); opacity:.25; filter:blur(1px); } 55% { transform:translateY(5px) scale(1.1); opacity:.88; filter:blur(0); } }
+@keyframes profile-bloom { 0%,100% { transform:scale(.7) rotate(-12deg); opacity:.35; } 48% { transform:scale(1.24) rotate(12deg); opacity:1; } }
+@keyframes profile-storm { 0%,72%,100% { opacity:.45; filter:brightness(.8); } 74%,79% { opacity:1; filter:brightness(1.8) drop-shadow(0 0 7px var(--cosmetic-highlight)); } }
+@keyframes profile-shard { 0%,100% { transform:rotate(-16deg) scale(.76); opacity:.4; } 38% { transform:rotate(8deg) scale(1.15); opacity:1; } 62% { transform:rotate(-4deg) scale(.95); } }
+@keyframes profile-breath { 0%,100% { transform:scale(.82); opacity:.48; } 50% { transform:scale(1.15); opacity:1; } }
+@keyframes profile-flourish { 0%,100% { transform:translateX(-3px) rotate(-10deg); } 50% { transform:translateX(4px) rotate(12deg); } }
+@keyframes profile-surge { 0%,72%,100% { opacity:.08; transform:scale(.96); } 80% { opacity:.75; transform:scale(1.04); } }
+
+.typing-cursor-adornment { position:absolute; z-index:36; left:-13px; top:-24px; width:22px; height:22px; display:grid; place-items:center; pointer-events:none; animation:cursor-crest-float 2.8s ease-in-out infinite; }
+.typing-cursor-adornment svg { width:100%; height:100%; overflow:visible; }
+.typing-cursor-adornment[data-motion="vortex"] { animation:cursor-crest-orbit 3.4s ease-in-out infinite; }
+.typing-cursor-adornment[data-motion="slash"],.typing-cursor-adornment[data-motion="step"] { animation:cursor-crest-strike 1.8s cubic-bezier(.2,.8,.2,1) infinite; }
+.typing-cursor-adornment[data-motion="inkfall"] { animation:cursor-crest-ink 3.6s ease-in infinite; }
+.typing-cursor-adornment[data-motion="storm"],.typing-cursor-adornment[data-motion="rift"] { animation:cursor-crest-glitch 1.5s steps(2,end) infinite; }
+.typing-cursor-adornment[data-motion="bloom"] { animation:cursor-crest-bloom 3.2s ease-in-out infinite; }
+.typing-cursor-adornment[data-motion="surge"] { animation:cursor-crest-surge 1.9s ease-out infinite; }
+.cosmetic-cursor-sample[data-shape="shuriken"] .cosmetic-cursor-caret,
+.cosmetic-cursor-sample[data-shape="star"] .cosmetic-cursor-caret,
+.cosmetic-cursor-sample[data-shape="crown"] .cosmetic-cursor-caret { filter:drop-shadow(0 0 7px var(--cursor-accent)); }
+.cosmetic-cursor-sample[data-face]:not([data-face=""]) .cosmetic-cursor-sigil { width:26px; height:26px; top:-7px; left:0; opacity:.92; }
+.cursor-text-effect { background-size:160% 100%; background-position:50% 50%; }
+.cursor-text-effect[data-cursor-rarity="legendary"],.cursor-text-effect[data-cursor-rarity="ultra"],.cursor-text-effect[data-cursor-rarity="divine"],.cursor-text-effect[data-cursor-rarity="mythical"] { text-shadow:0 0 9px currentColor,0 0 18px color-mix(in srgb,currentColor 45%,transparent); }
+@keyframes cursor-crest-float { 50% { transform:translateY(-4px) rotate(8deg) scale(1.08); } }
+@keyframes cursor-crest-orbit { 50% { transform:translateY(-4px) rotate(40deg) scale(1.15); } }
+@keyframes cursor-crest-strike { 22% { transform:translateY(-2px) rotate(-18deg) scale(1.25); } 46%,100% { transform:translateY(1px) rotate(5deg) scale(.92); } }
+@keyframes cursor-crest-ink { 45% { transform:translateY(3px) scale(1.1); opacity:.56; filter:blur(.4px); } }
+@keyframes cursor-crest-glitch { 18%,23%,67%,72% { transform:translate(2px,-2px); filter:brightness(1.8); } }
+@keyframes cursor-crest-bloom { 50% { transform:translateY(-3px) rotate(14deg) scale(1.3); } }
+@keyframes cursor-crest-surge { 38% { transform:translateY(-5px) scale(1.35); filter:brightness(1.8); } }
+
+/* One readable signature sweep on typed text; the caret and its crest carry the motion. */
+.cursor-text-effect { animation:none; }
+@media (prefers-reduced-motion: reduce) {
+  .typing-cursor-adornment,.typelo-profile-effect-frame .cosmetic-profile-orbit,.typelo-profile-effect-frame .cosmetic-profile-flare { animation:none !important; }
+}

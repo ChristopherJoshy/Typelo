@@ -44,6 +44,7 @@ import { motion } from 'framer-motion'
 import { useGameStore } from '../stores/gameStore'
 import { CursorInfo, EffectInfo, getCursorInfo, getEffectInfo } from '../types'
 import CursorEffect from './CursorEffect'
+import CursorAdornment from './CursorAdornment'
 import { getCursorStyle } from '../effects/cursors'
 
 // --- Types ---
@@ -138,8 +139,11 @@ const MemoizedCharacter = memo(({
     className += "text-white/50 "
   }
 
+  const activeCursor = priorityUser === 'opponent' ? opponentConfig.cursor : priorityUser === 'player' ? playerConfig.cursor : null
+  if (activeCursor && activeStyle) className += ' cursor-text-effect'
+
   return (
-    <span className={className} style={charStyle}>
+    <span className={className} style={charStyle} data-cursor-motion={activeCursor?.motion ?? ''} data-cursor-rarity={activeCursor?.rarity ?? ''}>
       {char}
 
       {/* Opponent Underline */}
@@ -152,47 +156,49 @@ const MemoizedCharacter = memo(({
 
       {/* Player Cursor */}
       {isCurrentChar && playerConfig.cursor && (
-        <motion.span
-          layoutId="player-cursor"
-          data-caret="player"
-          className="absolute -left-[2px] -top-1 h-[calc(100%+8px)] rounded-full z-30"
-          style={{
-            ...getCursorStyle(playerConfig.cursor.id),
-            width: Math.max(5, Number(getCursorStyle(playerConfig.cursor.id).width) || 0),
-            border: '1px solid rgba(255,255,255,0.9)',
-            boxShadow: `0 0 0 1px rgba(0,0,0,0.65), 0 0 12px ${playerConfig.cursor.glow}, 0 0 26px ${playerConfig.cursor.glow}`,
-          }}
-          animate={{
-            opacity: [1, 0.6, 1],
-          }}
-          transition={{
-            opacity: { duration: 0.8, repeat: Infinity, ease: 'easeInOut' },
-          }}
-        />
+        <>
+          <motion.span
+            layoutId="player-cursor"
+            data-caret="player"
+            data-cursor-id={playerConfig.cursor.id}
+            data-cursor-shape={playerConfig.cursor.cursorShape ?? ''}
+            data-cursor-motion={playerConfig.cursor.motion ?? ''}
+            className="absolute -left-[2px] -top-1 h-[calc(100%+8px)] rounded-full z-30"
+            style={{
+              ...getCursorStyle(playerConfig.cursor.id),
+              width: Math.max(5, Number(getCursorStyle(playerConfig.cursor.id).width) || 0),
+              border: '1px solid rgba(255,255,255,0.9)',
+              boxShadow: `0 0 0 1px rgba(0,0,0,0.65), 0 0 12px ${playerConfig.cursor.glow}, 0 0 26px ${playerConfig.cursor.glow}`,
+            }}
+            animate={{ opacity: [1, 0.6, 1] }}
+            transition={{ opacity: { duration: 0.8, repeat: Infinity, ease: 'easeInOut' } }}
+          />
+          <CursorAdornment cursorId={playerConfig.cursor.id} />
+        </>
       )}
 
       {/* Opponent Cursor - has distinct outline to differentiate from player cursor */}
       {isOpponentHere && opponentConfig.cursor && (
-        <motion.span
-          data-caret="opponent"
-          className="absolute -left-[3px] -top-1 h-[calc(100%+8px)] z-20 rounded-full"
-          style={{
-            ...getCursorStyle(opponentConfig.cursor.id),
-            width: Math.max(7, Number(getCursorStyle(opponentConfig.cursor.id).width) || 0),
-            border: '1px solid rgba(255,255,255,0.9)',
-            boxShadow: `0 0 0 1px rgba(0,0,0,0.75), 0 0 14px ${opponentConfig.cursor.glow}, 0 0 28px ${opponentConfig.cursor.glow}`,
-          }}
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-          }}
-          exit={{ opacity: 0, scale: 0.8 }}
-          transition={{
-            opacity: { duration: 0.1 },
-            scale: { type: "spring", stiffness: 500, damping: 30 },
-          }}
-        />
+        <>
+          <motion.span
+            data-caret="opponent"
+            data-cursor-id={opponentConfig.cursor.id}
+            data-cursor-shape={opponentConfig.cursor.cursorShape ?? ''}
+            data-cursor-motion={opponentConfig.cursor.motion ?? ''}
+            className="absolute -left-[3px] -top-1 h-[calc(100%+8px)] z-20 rounded-full"
+            style={{
+              ...getCursorStyle(opponentConfig.cursor.id),
+              width: Math.max(7, Number(getCursorStyle(opponentConfig.cursor.id).width) || 0),
+              border: '1px solid rgba(255,255,255,0.9)',
+              boxShadow: `0 0 0 1px rgba(0,0,0,0.75), 0 0 14px ${opponentConfig.cursor.glow}, 0 0 28px ${opponentConfig.cursor.glow}`,
+            }}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ opacity: { duration: 0.1 }, scale: { type: 'spring', stiffness: 500, damping: 30 } }}
+          />
+          <CursorAdornment cursorId={opponentConfig.cursor.id} />
+        </>
       )}
     </span>
   )
@@ -317,48 +323,50 @@ const MemoizedWord = memo(({
 
       {/* End of word Carets */}
       {isCurrentWord && currentCharIndex >= word.length && (
-        <motion.span
-          layoutId="player-cursor"
-          data-caret="player"
-          className="absolute right-0 -top-1 h-[calc(100%+8px)] rounded-full z-30"
-          style={{
-            ...getCursorStyle(playerConfig.cursor.id),
-            width: Math.max(5, Number(getCursorStyle(playerConfig.cursor.id).width) || 0),
-            border: '1px solid rgba(255,255,255,0.9)',
-            boxShadow: `0 0 0 1px rgba(0,0,0,0.65), 0 0 12px ${playerConfig.cursor.glow}, 0 0 26px ${playerConfig.cursor.glow}`,
-            transform: 'translateX(100%)',
-          }}
-          animate={{
-            opacity: [1, 0.6, 1],
-          }}
-          transition={{
-            opacity: { duration: 0.8, repeat: Infinity, ease: 'easeInOut' },
-          }}
-        />
+        <>
+          <motion.span
+            layoutId="player-cursor"
+            data-caret="player"
+            data-cursor-id={playerConfig.cursor.id}
+            data-cursor-shape={playerConfig.cursor.cursorShape ?? ''}
+            data-cursor-motion={playerConfig.cursor.motion ?? ''}
+            className="absolute right-0 -top-1 h-[calc(100%+8px)] rounded-full z-30"
+            style={{
+              ...getCursorStyle(playerConfig.cursor.id),
+              width: Math.max(5, Number(getCursorStyle(playerConfig.cursor.id).width) || 0),
+              border: '1px solid rgba(255,255,255,0.9)',
+              boxShadow: `0 0 0 1px rgba(0,0,0,0.65), 0 0 12px ${playerConfig.cursor.glow}, 0 0 26px ${playerConfig.cursor.glow}`,
+              transform: 'translateX(100%)',
+            }}
+            animate={{ opacity: [1, 0.6, 1] }}
+            transition={{ opacity: { duration: 0.8, repeat: Infinity, ease: 'easeInOut' } }}
+          />
+          <CursorAdornment cursorId={playerConfig.cursor.id} />
+        </>
       )}
 
       {wordIdx === opponentWordIndex && opponentCharIndex - words.slice(0, wordIdx).reduce((sum, w) => sum + w.length + 1, 0) >= word.length && (
-        <motion.span
-          data-caret="opponent"
-          className="absolute right-0 -top-1 h-[calc(100%+8px)] z-20 rounded-full"
-          style={{
-            ...getCursorStyle(opponentConfig.cursor.id),
-            width: Math.max(7, Number(getCursorStyle(opponentConfig.cursor.id).width) || 0),
-            border: '1px solid rgba(255,255,255,0.9)',
-            boxShadow: `0 0 0 1px rgba(0,0,0,0.75), 0 0 14px ${opponentConfig.cursor.glow}, 0 0 28px ${opponentConfig.cursor.glow}`,
-            transform: 'translateX(100%)',
-          }}
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-          }}
-          exit={{ opacity: 0, scale: 0.8 }}
-          transition={{
-            opacity: { duration: 0.1 },
-            scale: { type: "spring", stiffness: 500, damping: 30 },
-          }}
-        />
+        <>
+          <motion.span
+            data-caret="opponent"
+            data-cursor-id={opponentConfig.cursor.id}
+            data-cursor-shape={opponentConfig.cursor.cursorShape ?? ''}
+            data-cursor-motion={opponentConfig.cursor.motion ?? ''}
+            className="absolute right-0 -top-1 h-[calc(100%+8px)] z-20 rounded-full"
+            style={{
+              ...getCursorStyle(opponentConfig.cursor.id),
+              width: Math.max(7, Number(getCursorStyle(opponentConfig.cursor.id).width) || 0),
+              border: '1px solid rgba(255,255,255,0.9)',
+              boxShadow: `0 0 0 1px rgba(0,0,0,0.75), 0 0 14px ${opponentConfig.cursor.glow}, 0 0 28px ${opponentConfig.cursor.glow}`,
+              transform: 'translateX(100%)',
+            }}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ opacity: { duration: 0.1 }, scale: { type: 'spring', stiffness: 500, damping: 30 } }}
+          />
+          <CursorAdornment cursorId={opponentConfig.cursor.id} />
+        </>
       )}
     </span>
   )

@@ -476,7 +476,9 @@ from pathlib import Path as _CosmeticPath
 for _collection in _cosmetic_json.loads((_CosmeticPath(__file__).parent / "data" / "cosmetics.json").read_text()):
     _id = _collection["id"]
     _common = {"name": _collection["name"], "color": _collection["color"], "rarity": _collection["rarity"]}
-    CURSORS[_id] = {**_common, "glow": _collection["accent"]}
-    EFFECTS[_id] = {**_common, "name": _collection["name"] + " Trail"}
-    PROFILE_EFFECTS[_id] = {**_common, "name": _collection["name"] + " Scene", "animation": _collection["motion"]}
-    PROFILE_BORDERS[_id] = {**_common, "name": _collection["name"] + " Crest", "colors": [_collection["color"], _collection["accent"]], "style": "double" if _collection["variant"] % 4 == 0 else "solid", "width": 3, "animation": _collection["motion"]}
+    _motif = _collection.get("motif", _collection["family"])
+    _avatar_shape = _collection.get("avatarShape")
+    CURSORS[_id] = {**_common, "glow": _collection["accent"], "motion": _collection["motion"], "family": _collection["family"], "motif": _motif, "cursor_shape": _collection.get("cursorShape"), "face": _collection.get("face")}
+    EFFECTS[_id] = {**_common, "name": _collection["name"] + " Trail", "family": _collection["family"], "motif": _motif, "trail_style": _collection.get("trailStyle", _collection["family"])}
+    PROFILE_EFFECTS[_id] = {**_common, "name": _collection["name"] + " Scene", "animation": _collection["motion"], "family": _collection["family"], "motif": _motif, "shape": _avatar_shape}
+    PROFILE_BORDERS[_id] = {**_common, "name": _collection["name"] + " Crest", "colors": [_collection["color"], _collection["accent"]], "style": "double" if _collection["variant"] % 4 == 0 else "solid", "width": 3 + (_collection["variant"] % 4), "animation": _collection["motion"], "shape": _avatar_shape, "family": _collection["family"], "motif": _motif}

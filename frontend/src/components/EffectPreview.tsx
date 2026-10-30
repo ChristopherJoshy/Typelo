@@ -2,6 +2,7 @@ import { useId } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { getEffectVisual } from '../effects/visuals'
 import type { EffectFamily } from '../effects/visuals'
+import CosmeticMotif from './CosmeticMotif'
 
 interface EffectPreviewProps {
   effectId: string
@@ -119,14 +120,41 @@ export default function EffectPreview({ effectId, color, active = false }: Effec
   const trailId = `effect-trail-${id}`
   const blurId = `effect-preview-blur-${id}`
   const animate = active && !reducedMotion
+  const themedPathMotion: Record<string, Record<string, number[] | number>> = {
+    vortex: { pathLength: [0.32, 1, 0.58], opacity: [0.35, 1, 0.62] },
+    slash: { pathLength: [0.12, 1, 0.18], opacity: [0.3, 1, 0.5] },
+    step: { pathLength: [0.72, 0.28, 1], opacity: [0.52, 0.88, 0.45] },
+    inkfall: { pathLength: [1, 0.78, 0.92], opacity: [0.42, 0.82, 0.3] },
+    bloom: { pathLength: [0.18, 1, 0.18], opacity: [0.28, 1, 0.32] },
+    storm: { pathLength: [0.8, 0.3, 1], opacity: [0.2, 1, 0.35] },
+    shard: { pathLength: [0.4, 1, 0.7], opacity: [0.55, 1, 0.48] },
+    breath: { pathLength: [0.65, 1, 0.75], opacity: [0.45, 0.78, 0.48] },
+    flourish: { pathLength: [0.5, 1, 0.68], opacity: [0.35, 1, 0.48] },
+    rift: { pathLength: [0.45, 1, 0.56], opacity: [0.4, 1, 0.22] },
+    surge: { pathLength: [0.08, 1, 0.42], opacity: [0.12, 1, 0.4] },
+  }
   const pathMotion = !animate ? { pathLength: 1, opacity: 0.72 }
-    : visual.family === 'electric' || visual.family === 'digital'
+    : themedPathMotion[visual.motion] ?? (visual.family === 'electric' || visual.family === 'digital'
       ? { pathLength: [0.58, 1, 0.72], opacity: [0.45, 1, 0.62] }
       : visual.family === 'flame' || visual.family === 'plasma'
         ? { pathLength: [0.74, 1, 0.84], opacity: [0.58, 1, 0.66] }
-        : { pathLength: [0.62, 1, 0.68], opacity: [0.48, 0.96, 0.55] }
+        : { pathLength: [0.62, 1, 0.68], opacity: [0.48, 0.96, 0.55] })
+  const themedMarkMotion: Record<string, Record<string, number[] | number>> = {
+    vortex: { rotate: [0, 32, -24, 0], scale: [0.72, 1.22, 0.88], opacity: [0.42, 1, 0.5] },
+    slash: { x: [-7, 5, 0], y: [3, -3, 0], rotate: [-28, 12, 0], opacity: [0.25, 1, 0.55] },
+    step: { x: [0, 4, -3, 0], y: [2, -3, 1, 0], opacity: [0.4, 1, 0.5] },
+    inkfall: { y: [-2, 6, 0], scaleY: [0.82, 1.2, 0.86], opacity: [0.6, 0.35, 0.85] },
+    bloom: { rotate: [0, 14, -10, 0], scale: [0.66, 1.28, 0.78], opacity: [0.28, 1, 0.4] },
+    storm: { x: [0, 3, -2, 0], y: [0, -2, 1, 0], opacity: [0.25, 1, 0.38, 0.9] },
+    shard: { rotate: [-18, 8, -4, 0], scale: [0.75, 1.18, 0.9], opacity: [0.4, 1, 0.55] },
+    breath: { y: [0, -3, 0], scale: [0.9, 1.12, 0.9], opacity: [0.55, 0.95, 0.6] },
+    flourish: { x: [-3, 3, -2, 0], rotate: [-14, 18, -6, 0], opacity: [0.45, 1, 0.55] },
+    rift: { x: [0, 4, -3, 0], rotate: [0, -16, 14, 0], scale: [0.88, 1.16, 0.92], opacity: [0.2, 1, 0.35] },
+    surge: { y: [4, -5, 0], scale: [0.62, 1.36, 0.9], opacity: [0.2, 1, 0.45] },
+  }
   const markMotion = !animate ? { y: 0, opacity: 0.9 }
-    : visual.family === 'petal' || visual.family === 'confetti'
+    : themedMarkMotion[visual.motion] ?? (
+    visual.family === 'petal' || visual.family === 'confetti'
       ? { y: [0, -5, 2, 0], x: [0, 3, -2, 0], rotate: [0, 18, -8, 0], opacity: [0.55, 1, 0.72, 0.55] }
       : visual.family === 'flame'
         ? { y: [2, -5, 1], scale: [0.9, 1.16, 0.94], opacity: [0.72, 1, 0.7] }
@@ -134,10 +162,10 @@ export default function EffectPreview({ effectId, color, active = false }: Effec
           ? { y: [0, -2, 0], rotate: [0, 24, 0], scale: [0.88, 1.12, 0.88], opacity: [0.6, 1, 0.6] }
           : visual.family === 'digital' || visual.family === 'electric'
             ? { x: [0, 3, -2, 0], y: [0, -2, 1, 0], opacity: [0.3, 1, 0.48, 0.92] }
-            : { y: [0, -2, 0], opacity: [0.72, 1, 0.72] }
+            : { y: [0, -2, 0], opacity: [0.72, 1, 0.72] })
 
   return (
-    <div className="relative flex h-24 w-full items-center justify-center overflow-hidden" aria-hidden="true">
+    <div className="relative flex h-24 w-full items-center justify-center overflow-hidden" data-trail-style={visual.trailStyle} aria-hidden="true">
       <div
         className="absolute h-16 w-24 rounded-full blur-2xl"
         style={{ backgroundColor: visual.color, opacity: visual.family === 'void' ? 0.13 : 0.2 }}
@@ -170,6 +198,9 @@ export default function EffectPreview({ effectId, color, active = false }: Effec
           transition={{ duration: 2.1, repeat: animate ? Infinity : 0, ease: 'easeInOut' }}
         >
           <EffectMarks family={visual.family} effectId={effectId} color={visual.color} blurId={blurId} />
+          <g transform="translate(53 27) scale(.72)" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity=".94">
+            <CosmeticMotif kind={visual.motif} />
+          </g>
         </motion.g>
         <path d="M 99 15 L 106 19 L 99 21 L 101 27 L 96 23 L 91 27 L 93 21 L 87 19 L 94 17 L 96 11 Z" fill="#fff" fillOpacity=".9" />
       </svg>

@@ -225,6 +225,11 @@ export interface CursorInfo {
   glow: string
   rarity: CursorRarity
   fontColor?: string
+  motion?: string
+  family?: string
+  motif?: string
+  cursorShape?: string
+  face?: string
 }
 
 // Effect System Types
@@ -235,6 +240,9 @@ export interface EffectInfo {
   name: string
   color: string
   rarity: EffectRarity
+  family?: string
+  motif?: string
+  trailStyle?: string
 }
 
 export interface SpinResult {
@@ -409,6 +417,9 @@ export interface ProfileEffectInfo {
   color: string
   animation: string
   rarity: CursorRarity
+  family?: string
+  motif?: string
+  shape?: string
 }
 
 export interface ProfileBorderInfo {
@@ -420,6 +431,9 @@ export interface ProfileBorderInfo {
   width: number
   animation?: string
   rarity: CursorRarity
+  shape?: string
+  family?: string
+  motif?: string
 }
 
 export interface ProfileSpinResult {
@@ -608,9 +622,9 @@ export const getProfileBorderInfo = (borderId: string | null): ProfileBorderInfo
 
 // Collection IDs are immutable: inventories and old match snapshots remain valid.
 for (const collection of cosmeticCollections) {
-  const { id, name, color, accent, rarity, motion } = collection
-  CURSORS[id] = { id, name, color, glow: accent, rarity: rarity as CursorRarity }
-  EFFECTS[id] = { id, name: `${name} Trail`, color, rarity: rarity as EffectRarity }
-  PROFILE_EFFECTS[id] = { id, name: `${name} Scene`, color, animation: motion, rarity: rarity as CursorRarity }
-  PROFILE_BORDERS[id] = { id, name: `${name} Crest`, color, colors: [color, accent], style: collection.variant % 4 === 0 ? 'double' : 'solid', width: 3, animation: motion, rarity: rarity as CursorRarity }
+  const { id, name, color, accent, rarity, motion, family, motif } = collection
+  CURSORS[id] = { id, name, color, glow: accent, rarity: rarity as CursorRarity, motion, family, motif, cursorShape: collection.cursorShape, face: collection.face }
+  EFFECTS[id] = { id, name: `${name} Trail`, color, rarity: rarity as EffectRarity, family, motif, trailStyle: collection.trailStyle }
+  PROFILE_EFFECTS[id] = { id, name: `${name} Scene`, color, animation: motion, rarity: rarity as CursorRarity, family, motif, shape: collection.avatarShape }
+  PROFILE_BORDERS[id] = { id, name: `${name} Crest`, color, colors: [color, accent], style: collection.variant % 4 === 0 ? 'double' : 'solid', width: 3 + (collection.variant % 4), animation: motion, rarity: rarity as CursorRarity, shape: collection.avatarShape, family, motif }
 }

@@ -37,21 +37,25 @@ export default memo(function ProfileEffectFrame({ effect, active = true }: { eff
   const collection = collectionsById.get(effect.id)
   const family = collection?.family ?? effect.animation
   const motion = collection?.motion ?? effect.animation
+  const motif = collection?.motif ?? effect.motif ?? family
   const variant = collection?.variant ?? seed % 8
   const colors = collection ? [collection.color, collection.accent, '#fff'] : [color, '#fff']
   const layout = effectLayouts[family] ?? [[5, 8], [50, 5], [95, 8], [5, 92], [50, 95], [95, 92]]
   const duration = `${2.8 + (variant % 7) * .42}s`
-  return <span aria-hidden="true" data-profile-effect={effect.id} data-active={active} data-family={family} data-motion={motion} className={`typelo-profile-effect-frame profile-motion-${motion}`}
-    style={{ '--cosmetic-color': color, '--cosmetic-accent': colors[1], '--cosmetic-highlight': colors[2], '--cosmetic-duration': duration, '--cosmetic-rotation': `${seed % 40 - 20}deg`, '--cosmetic-variant': variant } as CSSProperties}>
+  return <span aria-hidden="true" data-profile-effect={effect.id} data-active={active} data-family={family} data-motion={motion} data-motif={motif} data-shape={collection?.avatarShape ?? effect.shape ?? ''} className={`typelo-profile-effect-frame profile-motion-${motion}`}
+    style={{ '--cosmetic-color': color, '--cosmetic-accent': colors[1], '--cosmetic-highlight': colors[2], '--cosmetic-duration': duration, '--cosmetic-rotation': `${seed % 40 - 20}deg`, '--cosmetic-variant': variant, '--cosmetic-intensity': 1 + (variant % 4) * .16 } as CSSProperties}>
     <span className="cosmetic-edge" style={{ borderStyle: variant === 1 ? 'dashed' : 'solid', borderWidth: variant === 2 ? 2 : 1,
       background: effect.color === 'rainbow' ? 'linear-gradient(115deg,#fb718518,transparent,#38bdf818)' : undefined }} />
     <span className="cosmetic-atmosphere" />
+    <span className="cosmetic-profile-orbit cosmetic-profile-orbit-a" />
+    <span className="cosmetic-profile-orbit cosmetic-profile-orbit-b" />
+    <span className="cosmetic-profile-flare" />
     {layout.map(([x, y], i) => <svg key={i} className="cosmetic-sigil" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"
       data-index={i}
       style={{ width: 15 + (seed + i * 3) % 12, height: 15 + (seed + i * 3) % 12,
         left: `${Math.max(2, Math.min(96, x + (variant % 3) - 1))}%`, top: `${Math.max(2, Math.min(94, y + (variant % 3) - 1))}%`,
         color: colors[i % colors.length], animationDelay: `${-i * .31}s`, opacity: .62 + (i % 3) * .12, transform: `rotate(${(seed + i * 53) % 90 - 45}deg)` }}>
-      <CosmeticMotif kind={family} />
+      <CosmeticMotif kind={motif} />
     </svg>)}
     <span className="cosmetic-corner cosmetic-corner-tl" /><span className="cosmetic-corner cosmetic-corner-br" />
   </span>

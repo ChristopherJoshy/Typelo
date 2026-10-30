@@ -247,6 +247,9 @@ function drawCursorTail(
   const color = visual.color
   const palette = visual.palette
   drawSmokeRibbon(context, visible, time, visual, fade, minimumPoints, lifetime)
+  if (['ribbon', 'ki', 'wave', 'dragon', 'feather', 'orbit'].includes(visual.trailStyle)) {
+    drawParallelWake(context, visible, time, visual, fade)
+  }
   const gradient = context.createLinearGradient(newest.x, newest.y, oldest.x, oldest.y)
   gradient.addColorStop(0, rgba(palette[0] ?? color, 0.82))
   gradient.addColorStop(0.28, rgba(palette[1] ?? color, 0.48))
@@ -291,6 +294,7 @@ function drawCursorTail(
     context.lineTo(oldest.x, oldest.y)
     context.stroke()
   }
+  drawTrailAccents(context, visible, time, visual, fade)
   context.setLineDash([])
   context.shadowBlur = 0
   context.globalAlpha = 1
@@ -333,7 +337,8 @@ function drawSmokeRibbon(
   for (let index = 0; index < ribbon.length - 1; index++) {
     const point = ribbon[index]
     const distanceFromHead = (ribbon.length - 1 - index) / Math.max(1, ribbon.length - 1)
-    const radius = 4 + distanceFromHead * 11
+    const styleScale = visual.trailStyle === 'ink' ? 1.42 : visual.trailStyle === 'ki' || visual.trailStyle === 'dragon' ? .78 : 1
+    const radius = (4 + distanceFromHead * 11) * styleScale
     const age = Math.max(0, time - point.at)
     const ageFade = Math.max(0, 1 - age / lifetime)
     const drift = Math.sin(time * .0017 + index * 1.7) * (1 + distanceFromHead * 3)
@@ -349,6 +354,148 @@ function drawSmokeRibbon(
     context.beginPath()
     context.arc(x, y, radius, 0, Math.PI * 2)
     context.fill()
+  }
+  context.restore()
+}
+
+function drawParallelWake(
+  context: CanvasRenderingContext2D,
+  points: TrailPoint[],
+  time: number,
+  visual: ReturnType<typeof getEffectVisual>,
+  fade: number,
+) {
+  const wake = points.slice(-20)
+  if (wake.length < 3) return
+  context.save()
+  context.globalAlpha = fade * (visual.trailStyle === 'ki' || visual.trailStyle === 'dragon' ? .58 : .36)
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+  context.shadowColor = visual.palette[1] ?? visual.color
+  context.shadowBlur = visual.trailStyle === 'orbit' ? 5 : 9
+  for (const side of [-1, 1]) {
+    context.strokeStyle = rgba(side < 0 ? (visual.palette[0] ?? visual.color) : (visual.palette[1] ?? visual.color), .7)
+    context.lineWidth = side === -1 ? 1.1 : 1.6
+    context.beginPath()
+    wake.forEach((point, index) => {
+      const before = wake[Math.max(0, index - 1)]
+      const after = wake[Math.min(wake.length - 1, index + 1)]
+      const dx = after.x - before.x
+      const dy = after.y - before.y
+      const length = Math.max(1, Math.hypot(dx, dy))
+      const wave = Math.sin(time * .006 + index * .8 + side) * (visual.trailStyle === 'wave' ? 3.2 : 1.7)
+      const offset = (side * (3.5 + wave))
+      const x = point.x - dy / length * offset
+      const y = point.y + dx / length * offset
+      if (index === 0) context.moveTo(x, y)
+      else context.lineTo(x, y)
+    })
+    context.stroke()
+  }
+  context.restore()
+}
+
+/** Small signature marks make similarly colored trails read as different cosmetics. */
+function drawTrailAccents(
+  context: CanvasRenderingContext2D,
+  points: TrailPoint[],
+  time: number,
+  visual: ReturnType<typeof getEffectVisual>,
+  fade: number,
+) {
+  const step = Math.max(3, Math.ceil(points.length / 8))
+  const accent = visual.palette[1] ?? visual.color
+  const highlight = visual.palette[0] ?? '#fff'
+  const style = visual.trailStyle
+
+  context.save()
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+  context.shadowColor = accent
+  context.shadowBlur = 4
+
+  for (let index = 1; index < points.length; index += step) {
+    const point = points[index]
+    const previous = points[Math.max(0, index - 1)]
+    const next = points[Math.min(points.length - 1, index + 1)]
+    const progress = index / Math.max(1, points.length - 1)
+    const size = 1.8 + progress * 2.1
+    const age = Math.max(0, time - point.at)
+    context.globalAlpha = fade * Math.max(0.12, 1 - age / 4200) * (0.28 + progress * 0.58)
+    context.strokeStyle = accent
+    context.fillStyle = accent
+    context.lineWidth = 0.8 + progress * 0.45
+    context.save()
+    context.translate(point.x, point.y)
+    context.rotate(Math.atan2(next.y - previous.y, next.x - previous.x))
+
+    switch (style) {
+      case 'rune':
+        context.beginPath()
+        context.moveTo(0, -size * 1.4); context.lineTo(size, 0); context.lineTo(0, size * 1.4); context.lineTo(-size, 0); context.closePath()
+        context.stroke()
+        context.beginPath(); context.moveTo(-size * .38, 0); context.lineTo(size * .38, 0); context.stroke()
+        break
+      case 'shards':
+      case 'slash':
+      case 'rift':
+        context.beginPath()
+        context.moveTo(-size * 1.8, size * .75); context.lineTo(size * .4, -size * 1.25); context.lineTo(size * 1.7, -size * .8); context.lineTo(-size * .2, size * 1.15); context.closePath()
+        context.fill()
+        context.strokeStyle = highlight
+        context.globalAlpha *= .58
+        context.beginPath(); context.moveTo(-size * 1.2, size * .35); context.lineTo(size * 1.2, -size * .85); context.stroke()
+        break
+      case 'petal':
+      case 'feather':
+        context.beginPath()
+        context.ellipse(0, 0, size * (style === 'feather' ? 1.9 : 1.2), size * .52, 0, 0, Math.PI * 2)
+        context.fill()
+        context.strokeStyle = highlight
+        context.globalAlpha *= .62
+        context.beginPath(); context.moveTo(-size, 0); context.lineTo(size, 0); context.stroke()
+        break
+      case 'ember':
+      case 'ki':
+      case 'dragon':
+        context.beginPath()
+        context.moveTo(0, -size * 1.5)
+        context.quadraticCurveTo(size * 1.4, -size * .1, 0, size * 1.25)
+        context.quadraticCurveTo(-size * .8, size * .15, 0, -size * 1.5)
+        context.fill()
+        context.fillStyle = highlight
+        context.globalAlpha *= .62
+        context.beginPath(); context.ellipse(0, 0, size * .22, size * .68, 0, 0, Math.PI * 2); context.fill()
+        break
+      case 'ink':
+        context.beginPath(); context.arc(0, 0, size * .78, 0, Math.PI * 2); context.fill()
+        context.beginPath(); context.arc(size * .8, -size * .55, size * .27, 0, Math.PI * 2); context.fill()
+        context.beginPath(); context.arc(-size * .75, size * .62, size * .22, 0, Math.PI * 2); context.fill()
+        break
+      case 'lightning':
+        context.beginPath(); context.moveTo(-size, -size); context.lineTo(size * .2, -size * .15); context.lineTo(-size * .15, size * .05); context.lineTo(size, size); context.stroke()
+        break
+      case 'digital':
+        context.fillRect(-size, -size, size * .72, size * .72)
+        context.fillRect(size * .2, size * .25, size * .58, size * .58)
+        break
+      case 'orbit':
+        context.beginPath(); context.ellipse(0, 0, size * 1.7, size * .55, Math.sin(time * .002 + index) * .5, 0, Math.PI * 2); context.stroke()
+        context.fillStyle = highlight
+        context.beginPath(); context.arc(size * 1.35, 0, size * .28, 0, Math.PI * 2); context.fill()
+        break
+      case 'impact':
+        context.beginPath(); context.arc(0, 0, size * 1.2, 0, Math.PI * 2); context.stroke()
+        context.beginPath(); context.moveTo(-size * 1.6, 0); context.lineTo(size * 1.6, 0); context.moveTo(0, -size * 1.6); context.lineTo(0, size * 1.6); context.stroke()
+        break
+      case 'wave':
+      case 'ribbon':
+        context.beginPath(); context.moveTo(-size * 1.8, 0); context.quadraticCurveTo(-size * .8, -size, 0, 0); context.quadraticCurveTo(size * .8, size, size * 1.8, 0); context.stroke()
+        break
+      default:
+        context.beginPath(); context.arc(0, 0, size * .48, 0, Math.PI * 2); context.fill()
+    }
+    context.restore()
   }
   context.restore()
 }

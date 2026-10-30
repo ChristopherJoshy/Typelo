@@ -41,6 +41,14 @@ function polygonPath(points: number, radius: number, rotation = 0) {
   }).join(' ') + ' Z'
 }
 
+function starPath(points: number, radius: number, inner: number, rotation = 0) {
+  return Array.from({ length: points * 2 }, (_, index) => {
+    const angle = index / (points * 2) * Math.PI * 2 - Math.PI / 2 + rotation * Math.PI / 180
+    const r = index % 2 ? inner : radius
+    return `${index === 0 ? 'M' : 'L'}${(50 + Math.cos(angle) * r).toFixed(2)} ${(50 + Math.sin(angle) * r).toFixed(2)}`
+  }).join(' ') + ' Z'
+}
+
 function radialPath(variant: number, radius: number, seed: number) {
   const samples = 64
   return Array.from({ length: samples }, (_, index) => {
@@ -65,7 +73,20 @@ function ellipsePath(radius: number, ratio: number, rotation: number) {
   }).join(' ') + ' Z'
 }
 
-function borderPath(geometry: number, variant: number, seed: number, radius: number) {
+function borderPath(geometry: number, variant: number, seed: number, radius: number, shape = '') {
+  if (shape === 'hex') return polygonPath(6, radius, seed % 30)
+  if (shape === 'octagon') return polygonPath(8, radius, seed % 18)
+  if (shape === 'diamond') return polygonPath(4, radius, 45 + seed % 12)
+  if (shape === 'star') return starPath(8, radius, radius * .82, seed % 15)
+  if (shape === 'burst') return radialPath(variant + 5, radius, seed % 17)
+  if (shape === 'petal') return radialPath(variant + 2, radius, seed % 23)
+  if (shape === 'oval' || shape === 'eclipse') return ellipsePath(radius, shape === 'eclipse' ? .9 : .76, (seed % 22) * Math.PI / 180)
+  if (shape === 'crescent') return `M50 ${50 - radius} A${radius} ${radius} 0 1 1 50 ${50 + radius} A${radius * .72} ${radius} 0 0 0 50 ${50 - radius} Z`
+  if (shape === 'orbital') return ellipsePath(radius, .84, -(seed % 26) * Math.PI / 180)
+  if (shape === 'wave') return radialPath(variant + 8, radius, seed % 31)
+  if (shape === 'scroll') return borderPath(3, variant, seed, radius)
+  if (shape === 'shield') return `M50 ${50-radius} L${50+radius*.8} ${50-radius*.62} L${50+radius*.68} ${50+radius*.24} Q50 ${50+radius*1.12} ${50-radius*.68} ${50+radius*.24} L${50-radius*.8} ${50-radius*.62} Z`
+  if (shape === 'crown') return `M${50-radius} 50 L${50-radius*.82} ${50-radius*.62} L${50-radius*.46} ${50-radius*.1} L${50-radius*.32} ${50-radius*.85} L50 ${50-radius*.28} L${50+radius*.32} ${50-radius*.85} L${50+radius*.46} ${50-radius*.1} L${50+radius*.82} ${50-radius*.62} L${50+radius} 50 Q${50+radius*.84} ${50+radius*.86} 50 ${50+radius*.88} Q${50-radius*.84} ${50+radius*.86} ${50-radius} 50Z`
   if (geometry === 1) return polygonPath(7 + variant % 6, radius, seed % 26)
   if (geometry === 2) return radialPath(variant, radius, seed % 17)
   if (geometry === 3) {
@@ -77,7 +98,7 @@ function borderPath(geometry: number, variant: number, seed: number, radius: num
   return ''
 }
 
-function BorderAccent({ family, palette, index, count, variant }: { family: string; palette: string[]; index: number; count: number; variant: number }) {
+function BorderAccent({ family, motif, palette, index, count, variant }: { family: string; motif: string; palette: string[]; index: number; count: number; variant: number }) {
   const color = palette[(index + variant) % palette.length] ?? '#e2e8f0'
   const glint = palette[(index + variant + 1) % palette.length] ?? '#fff'
   const angle = index * 360 / count + (variant * 11) % 29
@@ -122,6 +143,7 @@ function BorderAccent({ family, palette, index, count, variant }: { family: stri
     {!['petal', 'flame', 'crystal', 'frost', 'digital', 'glyph', 'cosmic', 'plasma', 'void', 'electric', 'ripple', 'mist', 'streak', 'confetti', 'halo', 'spark'].includes(family) && (
       <g transform="translate(38 -4) scale(.9)" stroke={color} fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><CosmeticMotif kind={family} /></g>
     )}
+    {motif && <g transform="translate(42 -1) scale(.67)" stroke={glint} fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" opacity=".92"><CosmeticMotif kind={motif} /></g>}
   </g>
 }
 
@@ -161,7 +183,7 @@ export default memo(function AvatarDecoration({ decorationType, size, animate = 
   const palette = getBorderPalette(border)
   const color = palette[Math.floor(palette.length / 2)] ?? '#e2e8f0'
   const collection = collectionsById.get(id)
-  const motif = getBorderMotif(id, border)
+  const motif = collection?.motif ?? border.motif ?? getBorderMotif(id, border)
   const family = collection?.family ?? motif
   const motion = collection?.motion ?? border.animation ?? 'sway'
   const variant = collection?.variant ?? seed % 50
@@ -182,18 +204,21 @@ export default memo(function AvatarDecoration({ decorationType, size, animate = 
   const glow = border.style === 'glow' || ['spark', 'electric', 'flame', 'crystal', 'cosmic', 'plasma', 'halo'].includes(family)
   const sweep = animate
   const motionClass = !animate ? ''
-    : ['glitch', 'matrix', 'pixels', 'lightning', 'thunder'].includes(motion) ? 'cosmetic-border-flicker'
-      : ['firestorm', 'phoenix'].includes(motion) ? 'cosmetic-border-surge'
-        : ['wave', 'sway', 'aurora', 'shimmer', 'ice', 'shatter', 'float', 'fade'].includes(motion) ? 'cosmetic-border-sway'
-          : ['galaxy', 'cosmic', 'plasma', 'quantum', 'rift', 'rings', 'rotate', 'sphere', 'warp', 'void'].includes(motion) ? 'cosmetic-orbit-reverse'
-            : family === 'petal' || family === 'halo' ? 'cosmetic-border-bloom' : 'cosmetic-orbit'
-  const geometry = variant % 6
-  const shapedPath = borderPath(geometry, variant, seed, 42)
-  const innerShapePath = borderPath(geometry, variant, seed, 37)
+    : ['glitch', 'matrix', 'pixels', 'lightning', 'thunder', 'storm', 'rift'].includes(motion) ? 'cosmetic-border-flicker'
+      : ['firestorm', 'phoenix', 'slash', 'surge', 'step'].includes(motion) ? 'cosmetic-border-surge'
+        : ['wave', 'sway', 'aurora', 'shimmer', 'ice', 'shatter', 'float', 'fade', 'inkfall', 'breath', 'flourish'].includes(motion) ? 'cosmetic-border-sway'
+          : ['galaxy', 'cosmic', 'plasma', 'quantum', 'rift', 'rings', 'rotate', 'sphere', 'warp', 'void', 'vortex', 'orbit'].includes(motion) ? 'cosmetic-orbit-reverse'
+            : motion === 'bloom' || family === 'petal' || family === 'halo' ? 'cosmetic-border-bloom' : 'cosmetic-orbit'
+  const shape = collection?.avatarShape ?? border.shape ?? ''
+  // New collection borders declare their own silhouette. Keep procedural
+  // variation for legacy borders, but preserve a custom star, shield, or petal.
+  const geometry = shape ? 1 + variant % 5 : variant % 6
+  const shapedPath = borderPath(geometry, variant, seed, 42, shape)
+  const innerShapePath = borderPath(geometry, variant, seed, 37, shape)
 
   return <span aria-hidden="true" data-border={border.id} data-active={animate} className={`cosmetic-decoration ${className}`}
     style={{ width: size ?? '100%', height: size ?? '100%', ...(numeric ? { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' } : { inset: 0 }), ...style }}>
-    <svg width="100%" height="100%" viewBox="0 0 100 100" fill="none" overflow="visible" data-family={family} data-motion={motion} data-active={animate}
+    <svg width="100%" height="100%" viewBox="0 0 100 100" fill="none" overflow="visible" data-family={family} data-motion={motion} data-motif={motif} data-shape={shape} data-active={animate}
       style={{ color, '--cosmetic-duration': duration } as CSSProperties}>
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
@@ -206,8 +231,8 @@ export default memo(function AvatarDecoration({ decorationType, size, animate = 
       </defs>
       <circle cx="50" cy="50" r="40" stroke={color} strokeWidth="7" opacity=".09" />
       {shapedPath && <path d={shapedPath} stroke={`url(#${gradientId})`} strokeWidth="1.25" strokeDasharray={geometry === 2 ? '1 1.5' : undefined} opacity=".86" />}
-      {geometry === 2 && <path d={innerShapePath} stroke={palette[1] ?? color} strokeWidth=".8" opacity=".62" />}
-      {geometry === 3 && <path d={borderPath(3, variant, seed, 34)} stroke={palette[1] ?? color} strokeWidth="1" opacity=".65" />}
+      {(geometry === 2 || shape === 'orbital' || shape === 'petal') && <path d={innerShapePath} stroke={palette[1] ?? color} strokeWidth=".8" opacity=".62" />}
+      {(geometry === 3 || shape === 'scroll') && <path d={borderPath(3, variant, seed, 34, shape)} stroke={palette[1] ?? color} strokeWidth="1" opacity=".65" />}
       {geometry === 4 && <path d={borderPath(1, variant, seed, 46)} stroke={palette[1] ?? color} strokeWidth=".9" strokeDasharray="2 3" opacity=".6" />}
       {geometry === 5 && <path d={ellipsePath(46, .8 + (variant % 4) * .03, -(seed % 28) * Math.PI / 180)} stroke={color} strokeWidth=".8" strokeDasharray="1 4" opacity=".72" />}
       {geometry === 0 && <circle cx="50" cy="50" r="35.5" stroke={`url(#${gradientId})`} strokeWidth="1.1" opacity=".8" />}
@@ -222,10 +247,10 @@ export default memo(function AvatarDecoration({ decorationType, size, animate = 
       {(border.style === 'ridge' || border.style === 'groove' || border.style === 'pixelated') && (
         geometry === 0
           ? <circle cx="50" cy="50" r={border.style === 'groove' ? 35.5 : 44} stroke={`url(#${gradientId})`} strokeWidth="1.1" strokeDasharray={dash} opacity=".82" />
-          : <path d={borderPath(geometry, variant, seed, border.style === 'groove' ? 35 : 46)} stroke={`url(#${gradientId})`} strokeWidth="1.1" strokeDasharray={dash} opacity=".82" />
+          : <path d={borderPath(geometry, variant, seed, border.style === 'groove' ? 35 : 46, shape)} stroke={`url(#${gradientId})`} strokeWidth="1.1" strokeDasharray={dash} opacity=".82" />
       )}
       <g className={`cosmetic-border-ornaments ${motionClass}`} style={{ transformOrigin: '50px 50px', '--cosmetic-duration': duration } as CSSProperties}>
-        {Array.from({ length: count }, (_, index) => <BorderAccent key={index} family={family} palette={palette} index={index} count={count} variant={variant} />)}
+        {Array.from({ length: count }, (_, index) => <BorderAccent key={index} family={family} motif={motif} palette={palette} index={index} count={count} variant={variant} />)}
       </g>
     </svg>
   </span>

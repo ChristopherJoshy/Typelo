@@ -33,6 +33,8 @@ export default function CursorCosmeticPreview({
     data-cursor-id={id}
     data-family={presentation.family}
     data-motion={presentation.motion}
+    data-shape={presentation.shape}
+    data-face={presentation.face ?? ''}
     data-active={active}
     style={cssVars}
     aria-hidden="true"
@@ -45,7 +47,7 @@ export default function CursorCosmeticPreview({
         style={{ ...cursorStyle, height: live ? 22 : 34 }}
       />
       {!live && <svg className="cosmetic-cursor-sigil" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
-        <CosmeticMotif kind={presentation.family} />
+        <CosmeticMotif kind={presentation.face ?? presentation.motif} />
       </svg>}
     </span>
   </span>

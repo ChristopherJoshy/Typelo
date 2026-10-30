@@ -25,6 +25,9 @@ export interface EffectVisual {
   color: string
   palette: readonly string[]
   glyph?: string
+  motif: string
+  trailStyle: string
+  motion: string
 }
 
 const familyGroups: Record<EffectFamily, readonly string[]> = {
@@ -96,5 +99,8 @@ export function getEffectVisual(effectId: string, colorOverride?: string): Effec
       ? [...new Set([color, ...familyPalette[family]])]
       : [color],
     glyph: glyphs[effectId] ?? (family === 'glyph' ? (collection?.finish === 'circuit' ? '∞' : '✧') : undefined),
+    motif: collection?.motif ?? effectId,
+    trailStyle: collection?.trailStyle ?? family,
+    motion: collection?.motion ?? 'breath',
   }
 }
