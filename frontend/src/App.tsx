@@ -40,6 +40,7 @@ import { Helmet } from 'react-helmet-async'
 import { useAuthStore } from './stores/authStore'
 import { useConnectionStore } from './stores/connectionStore'
 import { useInventoryStore } from './stores/inventoryStore'
+import { usePreferencesStore } from './stores/preferencesStore'
 import { useGameStore } from './stores/gameStore'
 import { WebSocketProvider } from './contexts/WebSocketContext'
 import { useDevToolsDetection } from './hooks/useDevToolsDetection'
@@ -61,6 +62,7 @@ function App() {
   const { user, loading, idToken } = useAuthStore()
   const { status: connectionStatus, startHealthCheck, stopHealthCheck } = useConnectionStore()
   const { equippedEffect, fetchInventory, fetchProfileInventory } = useInventoryStore()
+  const mouseEffectsEnabled = usePreferencesStore(state => state.mouseEffectsEnabled)
   const { pathname } = useLocation()
   const gameStatus = useGameStore(state => state.status)
 
@@ -137,7 +139,7 @@ function App() {
           <title>{pageTitle}</title>
         </Helmet>
         {user && connectionStatus === 'disconnected' && <ConnectionError />}
-        <CursorEffect effectId={pathname.startsWith('/game/') ? null : equippedEffect} />
+        <CursorEffect effectId={pathname.startsWith('/game/') || !mouseEffectsEnabled ? null : equippedEffect} />
         <WebSocketProvider>
           <Layout>
             <Suspense fallback={

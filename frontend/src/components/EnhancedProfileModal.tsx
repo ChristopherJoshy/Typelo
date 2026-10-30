@@ -45,6 +45,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
 import { useInventoryStore } from '../stores/inventoryStore'
+import { usePreferencesStore } from '../stores/preferencesStore'
 import { API_ENDPOINTS, apiFetch, getUserMatches } from '../config/api'
 import { getRankColor, getRankFromElo, getProfileBackgroundInfo, getProfileBorderInfo, getProfileEffectInfo } from '../types'
 import SparklineChart from './SparklineChart'
@@ -92,6 +93,7 @@ export default function EnhancedProfileModal({
         unlockedBorders,
         fetchProfileInventory
     } = useInventoryStore()
+    const backgroundDisplayMode = usePreferencesStore(state => state.backgroundDisplayMode)
     const [activeTab, setActiveTab] = useState<TabType>('matches')
     const [matches, setMatches] = useState<MatchHistoryEntry[]>([])
     const [loading, setLoading] = useState(false)
@@ -100,7 +102,7 @@ export default function EnhancedProfileModal({
     const [wpmHistory, setWpmHistory] = useState<number[]>([])
     const [eloHistory, setEloHistory] = useState<number[]>([])
 
-    const bgInfo = equippedBackground ? getProfileBackgroundInfo(equippedBackground) : null
+    const bgInfo = backgroundDisplayMode !== 'off' && equippedBackground ? getProfileBackgroundInfo(equippedBackground) : null
     const borderInfo = equippedBorder ? getProfileBorderInfo(equippedBorder) : null
     const effectInfo = equippedProfileEffect ? getProfileEffectInfo(equippedProfileEffect) : null
 

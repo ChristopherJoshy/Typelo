@@ -54,9 +54,11 @@ import FriendsModal from './FriendsModal'
 import LiveMatchFeed from './LiveMatchFeed'
 import DailyRewardModal from './DailyRewardModal'
 import UpdateModal from './UpdateModal'
+import SettingsModal from './SettingsModal'
 import { getFriends, getDailyStatus } from '../config/api'
 import { useOnlineStore } from '../stores/onlineStore'
 import { useInventoryStore } from '../stores/inventoryStore'
+import { usePreferencesStore } from '../stores/preferencesStore'
 
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
@@ -97,6 +99,7 @@ export default function Dashboard() {
   const { joinQueue, joinTrainingQueue, joinFriendsQueue, leaveQueue, isConnected, connectionMessage, retryConnection } = useWebSocket()
   const { status, queueElapsed, matchInfo, gameMode, matchNotice, clearMatchNotice } = useGameStore()
   const { equippedBackground, fetchProfileInventory } = useInventoryStore()
+  const backgroundDisplayMode = usePreferencesStore(state => state.backgroundDisplayMode)
 
   const [isConnecting, setIsConnecting] = useState(false)
   const [cooldown, setCooldown] = useState(0)
@@ -109,6 +112,7 @@ export default function Dashboard() {
   }, [user, fetchProfileInventory])
 
   const [showProfile, setShowProfile] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [showFriends, setShowFriends] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [friendsCount, setFriendsCount] = useState({ online: 0, offline: 0 })
@@ -395,7 +399,7 @@ export default function Dashboard() {
     >
       {/* Ambient Background Gradient Orbs or Custom BG */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        {equippedBackground && PROFILE_BACKGROUNDS[equippedBackground as keyof typeof PROFILE_BACKGROUNDS] ? (
+        {backgroundDisplayMode === 'lobby' && equippedBackground && PROFILE_BACKGROUNDS[equippedBackground as keyof typeof PROFILE_BACKGROUNDS] ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -502,6 +506,18 @@ export default function Dashboard() {
                     {hasPendingRequests && (
                       <span className="absolute right-4 w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
                     )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSettings(true)
+                      setShowUserMenu(false)
+                    }}
+                    className="w-full px-4 py-3 flex items-center gap-3 text-left transition-colors hover:bg-white/[0.05]"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-white/70" aria-hidden="true">
+                      <path d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M2 14h4m4-4h4m4 6h4" />
+                    </svg>
+                    <span className="text-sm text-white/80">Settings</span>
                   </button>
                 </div>
                 <div className="border-t border-white/10">
@@ -700,6 +716,8 @@ export default function Dashboard() {
 
       {/* Profile Modal */}
       <ProfileModal isOpen={showProfile} onClose={() => setShowProfile(false)} />
+
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
 
       {/* Friends Modal */}
       <FriendsModal isOpen={showFriends} onClose={() => setShowFriends(false)} />

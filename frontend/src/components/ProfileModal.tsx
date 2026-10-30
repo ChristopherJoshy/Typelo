@@ -42,6 +42,7 @@ import { useAuthStore } from '../stores/authStore'
 import ProfileEffectFrame from './ProfileEffectFrame'
 import AvatarDecoration from './AvatarDecoration'
 import { useInventoryStore } from '../stores/inventoryStore'
+import { usePreferencesStore } from '../stores/preferencesStore'
 import { getProfileEffectInfo, getProfileBackgroundInfo, getRankColor } from '../types'
 
 interface ProfileModalProps {
@@ -54,6 +55,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     const effectId = useInventoryStore(s => s.equippedProfileEffect)
     const borderId = useInventoryStore(s => s.equippedBorder)
     const backgroundId = useInventoryStore(s => s.equippedBackground)
+    const backgroundDisplayMode = usePreferencesStore(s => s.backgroundDisplayMode)
     const profileEffect = getProfileEffectInfo(effectId)
     const background = getProfileBackgroundInfo(backgroundId)
     const [inviteLink, setInviteLink] = useState<string | null>(null)
@@ -122,7 +124,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                             onClick={(e) => e.stopPropagation()}
                         >
                             {profileEffect && <ProfileEffectFrame effect={profileEffect} />}
-                            {background && <div className="absolute inset-0 bg-cover bg-center opacity-20 pointer-events-none" style={{ backgroundImage: `url(${background.path})` }} />}
+                            {background && backgroundDisplayMode !== 'off' && <div className="absolute inset-0 bg-cover bg-center opacity-20 pointer-events-none" style={{ backgroundImage: `url(${background.path})` }} />}
                             {/* Header with avatar */}
                             <div className="relative px-6 pt-8 pb-6">
                                 {/* Close button */}

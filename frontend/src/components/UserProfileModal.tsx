@@ -42,6 +42,7 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
+import { usePreferencesStore } from '../stores/preferencesStore'
 import { sendFriendRequest, getUserPublicProfile, PublicProfile } from '../config/api'
 import { getRankColor, Rank, getRankFromElo, getProfileBackgroundInfo, getProfileBorderInfo, getProfileEffectInfo } from '../types'
 import AvatarDecoration, { BORDER_TO_DECORATION } from './AvatarDecoration'
@@ -131,6 +132,7 @@ export default function UserProfileModal({
         ? Math.round((profile.wins / profile.total_matches) * 100)
         : 0
     const rank = getRankFromElo(userElo)
+    const backgroundDisplayMode = usePreferencesStore(state => state.backgroundDisplayMode)
     const isOwnProfile = currentUser?.uid === userId
     const currentElo = userElo
     const nextRankElo = currentElo < 1000 ? 1000 : currentElo < 2000 ? 2000 : currentElo < 3000 ? 3000 : 10000
@@ -138,7 +140,7 @@ export default function UserProfileModal({
     const eloProgress = ((currentElo - prevRankElo) / (nextRankElo - prevRankElo)) * 100
 
     // Profile customization
-    const bgInfo = profile?.equipped_background ? getProfileBackgroundInfo(profile.equipped_background) : null
+    const bgInfo = backgroundDisplayMode !== 'off' && profile?.equipped_background ? getProfileBackgroundInfo(profile.equipped_background) : null
     const borderInfo = profile?.equipped_border ? getProfileBorderInfo(profile.equipped_border) : null
     const effectInfo = profile?.equipped_profile_effect ? getProfileEffectInfo(profile.equipped_profile_effect) : null
 

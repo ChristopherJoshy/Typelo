@@ -48,6 +48,7 @@ import UserProfileModal from './UserProfileModal'
 import { getProfileBorderInfo, getProfileEffectInfo, getProfileBackgroundInfo } from '../types'
 import ProfileEffectFrame, { visibleCosmeticColor } from './ProfileEffectFrame'
 import { useInventoryStore } from '../stores/inventoryStore'
+import { usePreferencesStore } from '../stores/preferencesStore'
 import AvatarDecoration, { BORDER_TO_DECORATION } from './AvatarDecoration'
 
 interface UserRankInfo {
@@ -409,10 +410,11 @@ export default function Leaderboard() {
 const LeaderboardRow = forwardRef<HTMLDivElement, { entry: LeaderboardEntry; index: number; isCurrentUser?: boolean; isOnline?: boolean; onClick?: () => void }>(
   function LeaderboardRow({ entry, index, isCurrentUser, isOnline, onClick }, ref) {
     const equipped = useInventoryStore(s => ({ border: s.equippedBorder, effect: s.equippedProfileEffect, background: s.equippedBackground }))
+    const backgroundDisplayMode = usePreferencesStore(state => state.backgroundDisplayMode)
     const { position } = entry
     const user = isCurrentUser ? { ...entry.user, equippedBorder: equipped.border, equippedProfileEffect: equipped.effect, equippedBackground: equipped.background } : entry.user
     const effectInfo = user.equippedProfileEffect ? getProfileEffectInfo(user.equippedProfileEffect) : null
-    const bgInfo = user.equippedBackground ? getProfileBackgroundInfo(user.equippedBackground) : null
+    const bgInfo = backgroundDisplayMode !== 'off' && user.equippedBackground ? getProfileBackgroundInfo(user.equippedBackground) : null
 
     return (
       <motion.div
