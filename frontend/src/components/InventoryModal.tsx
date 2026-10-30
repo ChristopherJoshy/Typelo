@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useInventoryStore } from '../stores/inventoryStore'
 import { useAuthStore } from '../stores/authStore'
@@ -7,7 +7,8 @@ import CosmeticPreview, { type CosmeticKind, type CosmeticItem } from './Cosmeti
 import ProfileEffectFrame from './ProfileEffectFrame'
 import AvatarDecoration from './AvatarDecoration'
 import CursorEffect from './CursorEffect'
-import { getCursorStyle } from '../effects/cursors'
+import CursorCosmeticPreview from './CursorCosmeticPreview'
+import { getCursorPresentation } from '../effects/cursors'
 
 const categories: { id: CosmeticKind; label: string; description: string; items: Record<string, CosmeticItem> }[] = [
   { id: 'cursor', label: 'Cursors', description: 'A signature for every keystroke.', items: CURSORS },
@@ -18,6 +19,13 @@ const categories: { id: CosmeticKind; label: string; description: string; items:
 ]
 const PAGE_SIZE = 20
 const rarityOrder = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'ultra', 'divine', 'mythical']
+
+function cosmeticAccent(item: CosmeticItem): string {
+  if ('colors' in item && item.colors?.length) return item.colors[0]
+  if ('color' in item && item.color) return item.color
+  if ('glow' in item && item.glow) return item.glow
+  return getRarityColor(item.rarity)
+}
 
 export default function InventoryModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   // Mount the collection only while open; background wallet updates don't rebuild a closed grid.
@@ -115,7 +123,7 @@ function InventoryContent({ onClose }: { onClose: () => void }) {
         </div>
         <div ref={scrollRef} className="inventory-scroll"><div className="inventory-grid">
           {category !== 'cursor' && currentPage === 0 && !query && rarity === 'all' && ownership !== 'locked' && <button className={`inventory-item ${!selectedId ? 'is-selected' : ''}`} aria-pressed={!selectedId} onClick={() => { setSelectedId(null); setError('') }}><div className="inventory-art"><CosmeticPreview kind={category} item={null} /></div><div className="inventory-item-label"><strong>None</strong><span>Keep it simple</span></div></button>}
-          {items.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(item => <button key={item.id} className={`inventory-item ${selectedId === item.id ? 'is-selected' : ''}`} aria-pressed={selectedId === item.id} aria-label={`${item.name}, ${item.rarity}, ${owned.has(item.id) || item.id === 'default' ? 'owned' : 'unowned'}${equipped === item.id ? ', equipped' : ''}`} onClick={() => { setSelectedId(item.id); setError(''); setSample('') }}>
+          {items.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(item => <button key={item.id} className={`inventory-item ${selectedId === item.id ? 'is-selected' : ''}`} style={{ '--item-accent': cosmeticAccent(item) } as CSSProperties} aria-pressed={selectedId === item.id} aria-label={`${item.name}, ${item.rarity}, ${owned.has(item.id) || item.id === 'default' ? 'owned' : 'unowned'}${equipped === item.id ? ', equipped' : ''}`} onClick={() => { setSelectedId(item.id); setError(''); setSample('') }}>
             <div className="inventory-art"><CosmeticPreview kind={category} item={item} active={selectedId === item.id} />{equipped === item.id ? <span className="inventory-item-status">✓ Equipped</span> : !owned.has(item.id) && item.id !== 'default' ? <span className="inventory-item-status is-locked">◇</span> : null}</div>
             <div className="inventory-item-label"><strong title={item.name}>{item.name}</strong><span style={{ color: getRarityColor(item.rarity) }}>{item.rarity}</span></div>
           </button>)}
@@ -128,7 +136,16 @@ function InventoryContent({ onClose }: { onClose: () => void }) {
           <div className="inventory-live-avatar">{user?.photoURL ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" /> : <span>t<span className="text-rose-400">.</span></span>}{previewBorder && <AvatarDecoration decorationType={`border:${previewBorder}`} size={100} />}</div>
           <strong>{user?.displayName ?? 'Your profile'}</strong><span className="text-xs text-white/40">A look that follows you.</span>
         </div>
-        {(category === 'cursor' || category === 'effect') && <div className="inventory-typing-demo"><div ref={sampleRef} className="inventory-demo-line"><span>{sample || 'Make your mark'}</span><span data-caret="player" style={getCursorStyle(cursorId)} /></div><CursorEffect effectId={trailId} targetRef={sampleRef} caret="player" progress={sample} /><input aria-label="Try typing effect" maxLength={22} placeholder="Type here to try it…" value={sample} onChange={e => setSample(e.target.value)} /></div>}
+        {(category === 'cursor' || category === 'effect') && <div className="inventory-typing-demo">
+          <div className="inventory-demo-heading"><span>LIVE TEST</span><span>Type to see it move</span></div>
+          <div ref={sampleRef} className="inventory-demo-line" aria-hidden="true" style={{ '--cursor-accent': getCursorPresentation(cursorId).accent } as CSSProperties}>
+            {!sample && <span className="inventory-demo-placeholder">Your cursor starts here</span>}
+            <span className="inventory-demo-text">{sample}</span>
+            <CursorCosmeticPreview id={cursorId} active={category === 'cursor' || sample.length > 0} caretName="player" live />
+          </div>
+          <CursorEffect effectId={trailId} targetRef={sampleRef} caret="player" progress={sample} />
+          <input aria-label="Type here to test the selected cursor and trail" maxLength={22} placeholder="Type here to test…" value={sample} onChange={e => setSample(e.target.value)} />
+        </div>}
         <div className="inventory-selection"><h3>{selected?.name ?? (category === 'cursor' ? 'Default' : 'No cosmetic')}</h3><p>{definition.description}</p>{selected && <span className="inventory-rarity" style={{ color: getRarityColor(selected.rarity) }}>{selected.rarity}</span>}</div>
         <div className="mt-auto">{error && <p role="alert" className="mb-3 text-xs text-red-300">{error}</p>}<button className="inventory-equip" disabled={pending || !canEquip || (selectedId === equipped) || (!selectedId && !equipped)} onClick={equip}>{pending ? 'Equipping…' : !canEquip ? 'Discover in the shop' : selectedId === equipped || (!selectedId && !equipped) ? 'Equipped' : selectedId ? 'Equip cosmetic' : 'Use default'}</button><p className="inventory-hint">{canEquip ? 'Your look updates wherever you appear.' : 'Unowned items are available from crates.'}</p></div>
       </aside></div>

@@ -29,6 +29,30 @@ const cuts: Record<string, string> = {
   flame: 'polygon(50% 0,100% 30%,60% 55%,100% 75%,40% 100%,0 72%,25% 40%,0 18%)',
   pixel: 'polygon(0 0,100% 0,100% 30%,60% 30%,60% 45%,100% 45%,100% 100%,0 100%,0 65%,40% 65%,40% 50%,0 50%)',
 }
+
+const legacyFamilies: Record<string, string> = {
+  default: 'spark', ocean: 'ripple', forest: 'leaf', crimson: 'streak', mint: 'halo', sky: 'frost',
+  steel: 'digital', coral: 'petal', sunset: 'flame', lavender: 'petal', peach: 'petal', sapphire: 'crystal',
+  rose: 'petal', lime: 'electric', violet: 'cosmic', galaxy: 'cosmic', aurora: 'aurora', amber: 'spark',
+  emerald: 'leaf', ruby: 'flame', cyber: 'digital', retro: 'digital', amethyst: 'crystal', diamond: 'crystal',
+  obsidian: 'void', blood_moon: 'void', toxic: 'mist', golden: 'halo', plasma: 'plasma', inferno: 'flame',
+  glacier: 'frost', hologram: 'digital', nebula: 'cosmic', cosmos: 'cosmic', phoenix: 'flame', quantum: 'plasma',
+  void: 'void', celestial: 'halo', rainbow: 'spark',
+}
+
+const collectionsById = new Map(collections.map(collection => [collection.id, collection]))
+
+export function getCursorPresentation(id: string) {
+  const cursor = CURSORS[id] ?? CURSORS.default
+  const collection = collectionsById.get(id)
+  return {
+    family: collection?.family ?? legacyFamilies[id] ?? 'spark',
+    accent: collection?.accent ?? cursor.glow,
+    color: cursor.color,
+    motion: collection?.motion ?? 'pulse',
+  }
+}
+
 export function getCursorStyle(id: string): CSSProperties {
   const cursor = CURSORS[id] ?? CURSORS.default
   const [highlight, finish, width] = finishes[id] ?? finishes.default
