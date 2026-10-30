@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { getEffectVisual } from '../effects/visuals'
+import type { EffectFamily } from '../effects/visuals'
 
 interface EffectPreviewProps {
   effectId: string
@@ -26,6 +27,26 @@ const points: Record<string, readonly [number, number][]> = {
   void: [[45, 41], [68, 51]],
   confetti: [[42, 39], [64, 53], [83, 35]],
   halo: [[48, 39], [72, 51]],
+}
+
+const trailPaths: Record<EffectFamily, string> = {
+  spark: 'M 16 64 L 34 59 L 43 45 L 54 53 L 64 34 L 76 42 L 91 22 L 112 17',
+  ripple: 'M 16 63 C 38 60 33 39 49 34 C 67 28 71 50 85 49 C 105 48 96 25 112 18',
+  petal: 'M 16 65 C 31 61 32 42 45 39 C 56 37 56 53 67 50 C 83 45 82 28 112 18',
+  frost: 'M 16 62 L 30 55 L 39 59 L 49 43 L 61 49 L 70 32 L 82 39 L 95 20 L 112 16',
+  heart: 'M 16 63 C 31 58 31 39 45 39 C 57 39 54 55 67 53 C 82 52 86 31 112 18',
+  glyph: 'M 16 63 L 32 63 L 32 53 L 49 53 L 49 43 L 67 43 L 67 33 L 84 33 L 84 23 L 112 18',
+  streak: 'M 16 62 C 48 58 70 37 112 18',
+  mist: 'M 16 62 C 29 48 37 70 50 53 C 64 35 73 62 84 42 C 93 27 101 34 112 18',
+  flame: 'M 16 65 C 33 58 29 42 44 48 C 54 52 51 29 65 37 C 76 43 72 25 86 29 C 98 32 100 22 112 17',
+  electric: 'M 16 63 L 32 58 L 38 47 L 49 51 L 55 34 L 68 40 L 77 25 L 91 30 L 101 19 L 112 16',
+  digital: 'M 16 62 H 35 V 54 H 50 V 45 H 66 V 36 H 82 V 27 H 98 V 19 H 112',
+  plasma: 'M 16 62 C 36 57 37 42 49 43 C 63 44 62 60 78 48 C 95 35 85 24 112 18',
+  crystal: 'M 16 63 L 32 55 L 40 58 L 53 38 L 63 45 L 77 25 L 87 33 L 99 19 L 112 16',
+  cosmic: 'M 16 63 C 33 58 37 44 49 46 C 64 49 58 31 76 33 C 92 35 90 20 112 17',
+  void: 'M 16 63 C 38 64 31 43 48 41 C 68 38 64 59 81 50 C 96 42 87 25 112 18',
+  confetti: 'M 16 63 C 34 60 39 45 52 48 C 65 51 63 32 79 37 C 95 42 96 21 112 17',
+  halo: 'M 16 64 C 34 62 35 47 51 45 C 70 42 70 56 87 43 C 100 33 99 24 112 18',
 }
 
 function Star({ x, y, size }: { x: number; y: number; size: number }) {
@@ -98,6 +119,22 @@ export default function EffectPreview({ effectId, color, active = false }: Effec
   const trailId = `effect-trail-${id}`
   const blurId = `effect-preview-blur-${id}`
   const animate = active && !reducedMotion
+  const pathMotion = !animate ? { pathLength: 1, opacity: 0.72 }
+    : visual.family === 'electric' || visual.family === 'digital'
+      ? { pathLength: [0.58, 1, 0.72], opacity: [0.45, 1, 0.62] }
+      : visual.family === 'flame' || visual.family === 'plasma'
+        ? { pathLength: [0.74, 1, 0.84], opacity: [0.58, 1, 0.66] }
+        : { pathLength: [0.62, 1, 0.68], opacity: [0.48, 0.96, 0.55] }
+  const markMotion = !animate ? { y: 0, opacity: 0.9 }
+    : visual.family === 'petal' || visual.family === 'confetti'
+      ? { y: [0, -5, 2, 0], x: [0, 3, -2, 0], rotate: [0, 18, -8, 0], opacity: [0.55, 1, 0.72, 0.55] }
+      : visual.family === 'flame'
+        ? { y: [2, -5, 1], scale: [0.9, 1.16, 0.94], opacity: [0.72, 1, 0.7] }
+        : visual.family === 'ripple' || visual.family === 'halo' || visual.family === 'cosmic' || visual.family === 'plasma'
+          ? { y: [0, -2, 0], rotate: [0, 24, 0], scale: [0.88, 1.12, 0.88], opacity: [0.6, 1, 0.6] }
+          : visual.family === 'digital' || visual.family === 'electric'
+            ? { x: [0, 3, -2, 0], y: [0, -2, 1, 0], opacity: [0.3, 1, 0.48, 0.92] }
+            : { y: [0, -2, 0], opacity: [0.72, 1, 0.72] }
 
   return (
     <div className="relative flex h-24 w-full items-center justify-center overflow-hidden" aria-hidden="true">
@@ -117,17 +154,19 @@ export default function EffectPreview({ effectId, color, active = false }: Effec
           </filter>
         </defs>
         <motion.path
-          d="M 25 63 C 48 58 58 47 72 37 C 83 29 94 25 104 20"
+          d={trailPaths[visual.family]}
           stroke={`url(#${trailId})`}
-          strokeWidth="3"
+          strokeWidth={['streak', 'electric'].includes(visual.family) ? 2.5 : 3.5}
           strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={visual.family === 'digital' ? '4 2' : visual.family === 'frost' || visual.family === 'crystal' ? '8 2 1 2' : undefined}
           initial={false}
-          animate={animate ? { pathLength: [0.64, 1, 0.64], opacity: [0.48, 0.92, 0.48] } : { pathLength: 1, opacity: 0.72 }}
+          animate={pathMotion}
           transition={{ duration: 2.2, repeat: animate ? Infinity : 0, ease: 'easeInOut' }}
         />
         <motion.g
           color={visual.color}
-          animate={animate ? { y: [0, -1.5, 0], opacity: [0.72, 1, 0.72] } : { y: 0, opacity: 0.9 }}
+          animate={markMotion}
           transition={{ duration: 2.1, repeat: animate ? Infinity : 0, ease: 'easeInOut' }}
         >
           <EffectMarks family={visual.family} effectId={effectId} color={visual.color} blurId={blurId} />

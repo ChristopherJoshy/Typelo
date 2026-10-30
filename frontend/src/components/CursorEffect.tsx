@@ -100,6 +100,8 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
         }
       }
 
+      context.globalCompositeOperation = 'source-over'
+      context.globalAlpha = 1
       context.clearRect(0, 0, width, height)
       context.save()
       const trailPoint = trailPoints[trailPoints.length - 1]
@@ -107,7 +109,7 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
         trailPoints.push({ x: pointer.x, y: pointer.y, at: time })
       }
       trailPoints = trailPoints.filter(point => time - point.at < 420).slice(-16)
-      drawCursorTail(context, trailPoints, time, visual.color)
+      drawCursorTail(context, trailPoints, time, visual)
       const alive: Particle[] = []
       for (const particle of particles) {
         updateParticle(particle, elapsed)
@@ -131,10 +133,19 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
     const resize = () => {
       const ratio = Math.min(window.devicePixelRatio || 1, PIXEL_RATIO_LIMIT)
       const surface = targetRef?.current?.getBoundingClientRect()
-      width = surface?.width ?? window.innerWidth
-      height = surface?.height ?? window.innerHeight
-      canvas.width = Math.max(1, Math.round(width * ratio))
-      canvas.height = Math.max(1, Math.round(height * ratio))
+      const nextWidth = surface?.width ?? window.innerWidth
+      const nextHeight = surface?.height ?? window.innerHeight
+      const pixelWidth = Math.max(1, Math.round(nextWidth * ratio))
+      const pixelHeight = Math.max(1, Math.round(nextHeight * ratio))
+      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth
+        canvas.height = pixelHeight
+        particles = []
+        trailPoints = []
+        lastFrameAt = 0
+      }
+      width = nextWidth
+      height = nextHeight
       canvas.style.width = `${width}px`
       canvas.style.height = `${height}px`
       if (surface) {
@@ -147,6 +158,8 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
         canvas.style.top = '0'
       }
       context.setTransform(ratio, 0, 0, ratio, 0, 0)
+      context.globalCompositeOperation = 'source-over'
+      context.globalAlpha = 1
       scheduleFrame()
     }
 
@@ -162,6 +175,11 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
     const clearTrail = () => {
       pointerRef.current.active = false
       particles = []
+      trailPoints = []
+      lastX = 0
+      lastY = 0
+      lastFrameAt = 0
+      lastSpawnAt = 0
       if (frameId !== null) cancelAnimationFrame(frameId)
       frameId = null
       context.clearRect(0, 0, width, height)
@@ -172,6 +190,7 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
     const resizeObserver = targetRef?.current ? new ResizeObserver(resize) : null
     if (targetRef?.current) resizeObserver?.observe(targetRef.current)
     if (!targetRef) window.addEventListener('pointermove', handlePointerMove, { passive: true })
+    if (targetRef) window.addEventListener('scroll', resize, { passive: true, capture: true })
     document.documentElement.addEventListener('pointerleave', clearTrail, { passive: true })
     document.addEventListener('visibilitychange', clearTrail)
     window.addEventListener('blur', clearTrail)
@@ -180,6 +199,7 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
     return () => {
       if (frameId !== null) cancelAnimationFrame(frameId)
       window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('scroll', resize, true)
       document.documentElement.removeEventListener('pointerleave', clearTrail)
       document.removeEventListener('visibilitychange', clearTrail)
       window.removeEventListener('blur', clearTrail)
@@ -198,31 +218,38 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
       ref={canvasRef}
       aria-hidden="true"
       data-trail={caret ?? 'pointer'}
-      className="pointer-events-none fixed inset-0 z-[9999]"
-      style={{ width: '100vw', height: '100dvh' }}
+      className="pointer-events-none fixed inset-0 z-50 block max-w-none"
+      style={{ width: '100vw', height: '100dvh', background: 'transparent', mixBlendMode: 'normal' }}
     />
   )
-  return targetRef ? createPortal(canvas, document.body) : canvas
+  // Keep the drawing surface outside transformed application layers. Fixed canvases inside
+  // a filtered/animated ancestor can become a viewport-sized opaque slab in some browsers.
+  return createPortal(canvas, document.body)
 }
 
-function drawCursorTail(context: CanvasRenderingContext2D, points: TrailPoint[], time: number, color: string) {
+function drawCursorTail(context: CanvasRenderingContext2D, points: TrailPoint[], time: number, visual: ReturnType<typeof getEffectVisual>) {
   if (points.length < 2) return
   const visible = points.filter(point => time - point.at < 360)
   if (visible.length < 2) return
   const newest = visible[visible.length - 1]
   const oldest = visible[0]
   const fade = Math.max(0, 1 - (time - oldest.at) / 420)
+  const color = visual.color
+  const palette = visual.palette
   const gradient = context.createLinearGradient(newest.x, newest.y, oldest.x, oldest.y)
-  gradient.addColorStop(0, rgba(color, 0.72))
-  gradient.addColorStop(0.35, rgba(color, 0.36))
-  gradient.addColorStop(1, rgba(color, 0.02))
+  gradient.addColorStop(0, rgba(palette[0] ?? color, 0.82))
+  gradient.addColorStop(0.28, rgba(palette[1] ?? color, 0.48))
+  gradient.addColorStop(0.72, rgba(palette[2] ?? color, 0.2))
+  gradient.addColorStop(1, rgba(color, 0.015))
   context.globalAlpha = fade
   context.strokeStyle = gradient
-  context.lineWidth = 3.6
+  context.lineWidth = visual.family === 'streak' || visual.family === 'electric' ? 2.2 : 3.8
   context.lineCap = 'round'
   context.lineJoin = 'round'
   context.shadowColor = color
-  context.shadowBlur = 8
+  context.shadowBlur = visual.family === 'mist' ? 13 : 9
+
+  if (visual.family === 'digital') context.setLineDash([3, 3])
   context.beginPath()
   context.moveTo(newest.x, newest.y)
   for (let index = visible.length - 1; index > 0; index--) {
@@ -230,10 +257,34 @@ function drawCursorTail(context: CanvasRenderingContext2D, points: TrailPoint[],
     const previous = visible[index - 1]
     const middleX = (current.x + previous.x) / 2
     const middleY = (current.y + previous.y) / 2
-    context.quadraticCurveTo(current.x, current.y, middleX, middleY)
+    if (visual.family === 'electric') {
+      const jitter = Math.sin(time * .045 + index * 2.3) * 3
+      context.lineTo(current.x + jitter, current.y - jitter * .45)
+      context.lineTo(middleX, middleY)
+    } else {
+      context.quadraticCurveTo(current.x, current.y, middleX, middleY)
+    }
   }
   context.lineTo(oldest.x, oldest.y)
   context.stroke()
+
+  // A fine luminous core makes icy, cosmic and plasma trails read as layered ribbons.
+  if (['frost', 'crystal', 'cosmic', 'plasma', 'halo'].includes(visual.family)) {
+    context.setLineDash([])
+    context.strokeStyle = rgba(palette[0] ?? '#fff', visual.family === 'frost' ? .72 : .52)
+    context.lineWidth = visual.family === 'cosmic' || visual.family === 'plasma' ? 1.2 : .85
+    context.shadowBlur = 4
+    context.beginPath()
+    context.moveTo(newest.x, newest.y)
+    for (let index = visible.length - 1; index > 0; index--) {
+      const current = visible[index]
+      const previous = visible[index - 1]
+      context.quadraticCurveTo(current.x, current.y, (current.x + previous.x) / 2, (current.y + previous.y) / 2)
+    }
+    context.lineTo(oldest.x, oldest.y)
+    context.stroke()
+  }
+  context.setLineDash([])
   context.shadowBlur = 0
   context.globalAlpha = 1
 }

@@ -48,6 +48,5 @@ export default function CursorCosmeticPreview({
         <CosmeticMotif kind={presentation.family} />
       </svg>}
     </span>
-    {!live && <span className="cosmetic-cursor-caption">CURSOR SKIN</span>}
   </span>
 }
