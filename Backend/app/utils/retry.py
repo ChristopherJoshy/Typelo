@@ -66,10 +66,12 @@ async def notify_with_retry(
     """
     for attempt in range(max_retries):
         try:
-            await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 callback(*args, **kwargs),
                 timeout=timeout
             )
+            if result is False:
+                raise RuntimeError("callback reported that delivery failed")
             if attempt > 0:
                 logger.info(f"{label} succeeded on attempt {attempt + 1}")
             return True

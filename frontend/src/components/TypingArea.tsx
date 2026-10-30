@@ -87,18 +87,35 @@ const MemoizedCharacter = memo(({
   let charStyle: React.CSSProperties = {}
   let className = "relative inline-block transition-colors duration-150 overflow-visible "
 
-  const getTextStyle = (cursor: CursorInfo | null, isRainbow: boolean) => {
+  const getTextStyle = (cursor: CursorInfo | null) => {
     if (!cursor) return {}
-    const color = isRainbow ? '#ec4899' : cursor.color
-    return { color: color }
+    if (cursor.color === 'rainbow') {
+      return {
+        color: '#f9a8d4',
+        fontWeight: 700,
+        textShadow: `0 0 8px ${cursor.glow}, 0 0 18px ${cursor.glow}`,
+        animation: 'typelo-cursor-text-rainbow 1.8s linear infinite',
+      }
+    }
+    const skin = getCursorStyle(cursor.id)
+    return {
+      color: 'transparent',
+      backgroundImage: String(skin.background ?? `linear-gradient(90deg, ${cursor.color}, ${cursor.glow}, ${cursor.color})`),
+      backgroundClip: 'text',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      fontWeight: 700,
+      textShadow: `0 0 8px ${cursor.glow}`,
+      filter: `drop-shadow(0 0 1px ${cursor.glow})`,
+    }
   }
 
   // Define Styles based on Priority User
   let activeStyle = null
   if (priorityUser === 'player' && status !== 'incorrect') {
-    activeStyle = getTextStyle(playerConfig.cursor, playerConfig.cursor?.color === 'rainbow')
+    activeStyle = getTextStyle(playerConfig.cursor)
   } else if (priorityUser === 'opponent') {
-    activeStyle = getTextStyle(opponentConfig.cursor, opponentConfig.cursor?.color === 'rainbow')
+    activeStyle = getTextStyle(opponentConfig.cursor)
   }
 
   if (status === 'correct' || (status !== 'incorrect' && priorityUser !== 'none')) {
@@ -110,11 +127,6 @@ const MemoizedCharacter = memo(({
         charStyle.opacity = 1.0 
       } */
 
-      if ((priorityUser === 'player' && playerConfig.cursor?.color === 'rainbow') ||
-        (priorityUser === 'opponent' && opponentConfig.cursor?.color === 'rainbow')) {
-        charStyle.animation = 'rainbow-text 2s linear infinite'
-        charStyle.color = undefined
-      }
     } else {
       // Default colors if no cursor
       if (priorityUser === 'player') className += "text-emerald-400 "
@@ -130,20 +142,6 @@ const MemoizedCharacter = memo(({
     <span className={className} style={charStyle}>
       {char}
 
-      {/* Rainbow Animation Style */}
-      {(playerConfig.cursor?.color === 'rainbow' || opponentConfig.cursor?.color === 'rainbow') && (
-        <style>{`
-            @keyframes rainbow-text {
-                0% { color: #ec4899; }
-                20% { color: #8b5cf6; }
-                40% { color: #3b82f6; }
-                60% { color: #10b981; }
-                80% { color: #fbbf24; }
-                100% { color: #ec4899; }
-            }
-        `}</style>
-      )}
-
       {/* Opponent Underline */}
       {isOpponentPast && (
         <span
@@ -157,19 +155,18 @@ const MemoizedCharacter = memo(({
         <motion.span
           layoutId="player-cursor"
           data-caret="player"
-          className="absolute -left-[1px] top-0 w-[5px] h-full rounded-full z-10"
+          className="absolute -left-[2px] -top-1 h-[calc(100%+8px)] rounded-full z-30"
           style={{
             ...getCursorStyle(playerConfig.cursor.id),
-            backgroundColor: playerConfig.cursor.color === 'rainbow' ? '#ec4899' : playerConfig.cursor.color,
-            boxShadow: `0 0 16px ${playerConfig.cursor.glow}`, // Increased Glow
+            width: Math.max(5, Number(getCursorStyle(playerConfig.cursor.id).width) || 0),
+            border: '1px solid rgba(255,255,255,0.9)',
+            boxShadow: `0 0 0 1px rgba(0,0,0,0.65), 0 0 12px ${playerConfig.cursor.glow}, 0 0 26px ${playerConfig.cursor.glow}`,
           }}
           animate={{
             opacity: [1, 0.6, 1],
-            backgroundColor: playerConfig.cursor.color === 'rainbow' ? ["#ec4899", "#8b5cf6", "#3b82f6", "#10b981", "#fbbf24", "#f43f5e", "#ec4899"] : playerConfig.cursor.color
           }}
           transition={{
             opacity: { duration: 0.8, repeat: Infinity, ease: 'easeInOut' },
-            backgroundColor: playerConfig.cursor.color === 'rainbow' ? { duration: 2, repeat: Infinity, ease: "linear" } : {}
           }}
         />
       )}
@@ -178,24 +175,22 @@ const MemoizedCharacter = memo(({
       {isOpponentHere && opponentConfig.cursor && (
         <motion.span
           data-caret="opponent"
-          className="absolute -left-[2px] top-0 w-[8px] h-full z-20 rounded-full"
+          className="absolute -left-[3px] -top-1 h-[calc(100%+8px)] z-20 rounded-full"
           style={{
             ...getCursorStyle(opponentConfig.cursor.id),
-            backgroundColor: opponentConfig.cursor.color === 'rainbow' ? '#ec4899' : opponentConfig.cursor.color,
-            boxShadow: `0 0 20px ${opponentConfig.cursor.glow}, inset 0 0 0 1px rgba(0,0,0,0.5)`, // Increased Glow
-            border: '2px solid rgba(255,255,255,0.4)', // Thicker border
+            width: Math.max(7, Number(getCursorStyle(opponentConfig.cursor.id).width) || 0),
+            border: '1px solid rgba(255,255,255,0.9)',
+            boxShadow: `0 0 0 1px rgba(0,0,0,0.75), 0 0 14px ${opponentConfig.cursor.glow}, 0 0 28px ${opponentConfig.cursor.glow}`,
           }}
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{
             opacity: 1,
             scale: 1,
-            backgroundColor: opponentConfig.cursor.color === 'rainbow' ? ["#ec4899", "#8b5cf6", "#3b82f6", "#10b981", "#fbbf24", "#f43f5e", "#ec4899"] : opponentConfig.cursor.color
           }}
           exit={{ opacity: 0, scale: 0.8 }}
           transition={{
             opacity: { duration: 0.1 },
             scale: { type: "spring", stiffness: 500, damping: 30 },
-            backgroundColor: opponentConfig.cursor.color === 'rainbow' ? { duration: 2, repeat: Infinity, ease: "linear" } : {}
           }}
         />
       )}
@@ -325,20 +320,19 @@ const MemoizedWord = memo(({
         <motion.span
           layoutId="player-cursor"
           data-caret="player"
-          className="absolute right-0 top-0 w-[5px] h-full rounded-full"
+          className="absolute right-0 -top-1 h-[calc(100%+8px)] rounded-full z-30"
           style={{
             ...getCursorStyle(playerConfig.cursor.id),
-            backgroundColor: playerConfig.cursor.color === 'rainbow' ? '#ec4899' : playerConfig.cursor.color,
-            boxShadow: `0 0 16px ${playerConfig.cursor.glow}`,
+            width: Math.max(5, Number(getCursorStyle(playerConfig.cursor.id).width) || 0),
+            border: '1px solid rgba(255,255,255,0.9)',
+            boxShadow: `0 0 0 1px rgba(0,0,0,0.65), 0 0 12px ${playerConfig.cursor.glow}, 0 0 26px ${playerConfig.cursor.glow}`,
             transform: 'translateX(100%)',
           }}
           animate={{
             opacity: [1, 0.6, 1],
-            backgroundColor: playerConfig.cursor.color === 'rainbow' ? ["#ec4899", "#8b5cf6", "#3b82f6", "#10b981", "#fbbf24", "#f43f5e", "#ec4899"] : playerConfig.cursor.color
           }}
           transition={{
             opacity: { duration: 0.8, repeat: Infinity, ease: 'easeInOut' },
-            backgroundColor: playerConfig.cursor.color === 'rainbow' ? { duration: 2, repeat: Infinity, ease: "linear" } : {}
           }}
         />
       )}
@@ -346,25 +340,23 @@ const MemoizedWord = memo(({
       {wordIdx === opponentWordIndex && opponentCharIndex - words.slice(0, wordIdx).reduce((sum, w) => sum + w.length + 1, 0) >= word.length && (
         <motion.span
           data-caret="opponent"
-          className="absolute right-0 top-0 w-[8px] h-full z-20 rounded-full"
+          className="absolute right-0 -top-1 h-[calc(100%+8px)] z-20 rounded-full"
           style={{
             ...getCursorStyle(opponentConfig.cursor.id),
-            backgroundColor: opponentConfig.cursor.color === 'rainbow' ? '#ec4899' : opponentConfig.cursor.color,
-            boxShadow: `0 0 20px ${opponentConfig.cursor.glow}, inset 0 0 0 1px rgba(0,0,0,0.5)`,
-            border: '2px solid rgba(255,255,255,0.4)',
+            width: Math.max(7, Number(getCursorStyle(opponentConfig.cursor.id).width) || 0),
+            border: '1px solid rgba(255,255,255,0.9)',
+            boxShadow: `0 0 0 1px rgba(0,0,0,0.75), 0 0 14px ${opponentConfig.cursor.glow}, 0 0 28px ${opponentConfig.cursor.glow}`,
             transform: 'translateX(100%)',
           }}
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{
             opacity: 1,
             scale: 1,
-            backgroundColor: opponentConfig.cursor.color === 'rainbow' ? ["#ec4899", "#8b5cf6", "#3b82f6", "#10b981", "#fbbf24", "#f43f5e", "#ec4899"] : opponentConfig.cursor.color
           }}
           exit={{ opacity: 0, scale: 0.8 }}
           transition={{
             opacity: { duration: 0.1 },
             scale: { type: "spring", stiffness: 500, damping: 30 },
-            backgroundColor: opponentConfig.cursor.color === 'rainbow' ? { duration: 2, repeat: Infinity, ease: "linear" } : {}
           }}
         />
       )}

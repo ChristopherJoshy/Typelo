@@ -1373,6 +1373,14 @@ body,
 @keyframes cursor-flare { 25% { filter:brightness(1.65) drop-shadow(0 0 11px var(--cursor-accent)); transform:scaleY(.9) skewX(-8deg); } 70% { filter:brightness(1.18) drop-shadow(0 0 3px var(--cursor-accent)); transform:scaleY(1.04) skewX(3deg); } }
 @keyframes cursor-orbit-flicker { 50% { filter:brightness(1.55) drop-shadow(0 0 12px var(--cursor-accent)); transform:rotate(8deg) scaleY(.9); } }
 @keyframes cursor-digital-flicker { 50% { filter:brightness(1.7) drop-shadow(2px 0 4px var(--cursor-accent)); transform:translateX(1px); } }
+@keyframes typelo-cursor-text-rainbow {
+  0% { color:#fb7185; }
+  20% { color:#fbbf24; }
+  40% { color:#34d399; }
+  60% { color:#38bdf8; }
+  80% { color:#a78bfa; }
+  100% { color:#fb7185; }
+}
 .inventory-eyebrow,.inventory-header p,.cosmetic-cursor-caption,.inventory-demo-heading,.inventory-selection p,.inventory-rarity,.inventory-hint { display:none; }
 .inventory-header h2 { margin:0; }
 @media (max-width:700px) { .inventory-demo-line { padding:0 10px; } }

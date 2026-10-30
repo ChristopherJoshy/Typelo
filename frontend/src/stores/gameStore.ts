@@ -61,11 +61,15 @@ interface GameStore extends GameState {
   matchFound: (info: MatchInfo) => void
   startCountdown: () => void
   startGame: (duration: number, startTime: number) => void
+  activateMatch: () => void
   updateTimeRemaining: (time: number) => void
   typeChar: (char: string, correct: boolean) => void
   deleteChar: () => void
   completeWord: () => void
   updateOpponentProgress: (charIndex: number, wordIndex: number) => void
+  updateMatchReadyStatus: (youReady: boolean, opponentReady: boolean, expiresAt: number | null) => void
+  cancelPendingMatch: (notice: string) => void
+  clearMatchNotice: () => void
   endGame: (result: MatchResult) => void
   updateWpm: (wpm: number) => void
   updateAccuracy: (accuracy: number) => void
@@ -92,6 +96,10 @@ const initialState: GameState = {
   opponentWordIndex: 0,
   keyStats: {}, // New
   startTime: null,
+  youReady: false,
+  opponentReady: false,
+  readyExpiresAt: null,
+  matchNotice: null,
 }
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -120,6 +128,7 @@ export const useGameStore = create<GameStore>((set) => ({
     queueElapsed: 0,
     matchInfo: null,
     result: null,
+    matchNotice: null,
   }),
 
   joinTrainingQueue: () => set({
@@ -128,6 +137,7 @@ export const useGameStore = create<GameStore>((set) => ({
     queueElapsed: 0,
     matchInfo: null,
     result: null,
+    matchNotice: null,
   }),
 
   joinFriendsQueue: () => set({
@@ -136,6 +146,7 @@ export const useGameStore = create<GameStore>((set) => ({
     queueElapsed: 0,
     matchInfo: null,
     result: null,
+    matchNotice: null,
   }),
 
   leaveQueue: () => set({
@@ -162,6 +173,10 @@ export const useGameStore = create<GameStore>((set) => ({
     opponentCharIndex: 0,
     opponentWordIndex: 0,
     startTime: null,
+    youReady: false,
+    opponentReady: false,
+    readyExpiresAt: null,
+    matchNotice: null,
   }),
 
   startCountdown: () => set({ status: 'waiting' }),  // Changed to waiting
@@ -176,6 +191,8 @@ export const useGameStore = create<GameStore>((set) => ({
       startTime,
     }
   }),
+
+  activateMatch: () => set((state) => state.status === 'waiting' ? { status: 'playing' } : state),
 
   updateTimeRemaining: (time: number) => set({
     timeRemaining: time
@@ -206,6 +223,20 @@ export const useGameStore = create<GameStore>((set) => ({
     opponentCharIndex: charIndex,
     opponentWordIndex: wordIndex,
   }),
+
+  updateMatchReadyStatus: (youReady, opponentReady, expiresAt) => set({
+    youReady,
+    opponentReady,
+    readyExpiresAt: expiresAt,
+  }),
+
+  cancelPendingMatch: (notice) => set({
+    ...initialState,
+    matchNotice: notice,
+    matchDuration: 30,
+  }),
+
+  clearMatchNotice: () => set({ matchNotice: null }),
 
   endGame: (result: MatchResult) => set({
     status: 'finished',

@@ -43,7 +43,9 @@
  * None
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const DEVELOPMENT_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const PRODUCTION_API_URL = 'https://3.110.118.112'
+const API_BASE_URL = import.meta.env.DEV ? DEVELOPMENT_API_URL : PRODUCTION_API_URL
 
 export function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers)
@@ -62,7 +64,7 @@ export const API_ENDPOINTS = {
   leaderboardTop: `${API_BASE_URL}/api/leaderboard/top`,
   leaderboardUser: `${API_BASE_URL}/api/leaderboard/user`,
   leaderboardStats: `${API_BASE_URL}/api/leaderboard/stats`,
-  matchWs: API_BASE_URL.replace('http', 'ws') + '/api/match/ws',
+  matchWs: API_BASE_URL.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:') + '/api/match/ws',
 }
 
 export interface ApiError {

@@ -135,6 +135,10 @@ export interface GameState {
   opponentWordIndex: number
   keyStats: Record<string, { total: number; errors: number }>
   startTime: number | null // Timestamp when game actually starts (for sync)
+  youReady: boolean
+  opponentReady: boolean
+  readyExpiresAt: number | null
+  matchNotice: string | null
 }
 
 // WebSocket Messages
@@ -142,13 +146,23 @@ export type ClientMessageType =
   | { type: 'JOIN_QUEUE' }
   | { type: 'JOIN_TRAINING_QUEUE' }
   | { type: 'LEAVE_QUEUE' }
+  | { type: 'READY_FOR_MATCH'; match_id: string }
+  | { type: 'LEAVE_MATCH' }
+  | { type: 'GAME_END_ACK'; match_id: string }
+  | { type: 'GAME_START_ACK'; match_id: string; timestamp: number }
   | { type: 'KEYSTROKE'; char: string; timestamp: number; charIndex: number }
   | { type: 'WORD_COMPLETE'; word: string; wordIndex: number; timestamp: number }
 
 export type ServerMessageType =
   | { type: 'QUEUE_UPDATE'; position: number; elapsed: number }
   | { type: 'MATCH_FOUND'; matchId: string; opponentDisplayName: string; opponentPhotoUrl: string | null; opponentRank: Rank; opponentIsBot: boolean; words: string[] }
+  | { type: 'MATCH_RESTORED'; match_id: string; state: 'preparing' | 'waiting' | 'active'; started_at: number | null; duration: number; player_progress: { current_char_index: number; current_word_index: number; final_characters: Record<string, string>; errors: number } }
   | { type: 'GAME_START'; timestamp: number; duration: number }
+  | { type: 'MATCH_ACTIVE'; match_id: string }
+  | { type: 'MATCH_READY_STATUS'; match_id: string; you_ready: boolean; opponent_ready: boolean; ready_count: number; required_count: number; expires_at: number | null }
+  | { type: 'MATCH_CANCELLED'; match_id: string; reason: string }
+  | { type: 'SESSION_REPLACED'; active_session_id: string }
+  | { type: 'SESSION_LOCKED'; match_id: string; active_session_id: string }
   | {
       type: 'OPPONENT_PROGRESS'
       charIndex?: number

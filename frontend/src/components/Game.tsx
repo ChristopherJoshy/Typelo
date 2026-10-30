@@ -54,8 +54,11 @@ export default function Game() {
   const navigate = useNavigate()
   const { user, stats } = useAuthStore()
   const { equippedCursor, equippedEffect } = useInventoryStore()
-  const { sendKeystroke, sendWordComplete, leaveQueue, ping, timeOffset } = useWebSocket()
+  const { sendKeystroke, sendWordComplete, leaveQueue, readyForMatch, leaveMatch, isConnected, ping, timeOffset } = useWebSocket()
   const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null)
+  const [readySecondsLeft, setReadySecondsLeft] = useState<number | null>(null)
+  const [confirmLeave, setConfirmLeave] = useState(false)
+  const [recoveringMatch, setRecoveringMatch] = useState(false)
 
   // Feature: Sound & Zen Mode
   const { playSound, enabled: soundEnabled, toggleSound } = useSound()
@@ -82,6 +85,9 @@ export default function Game() {
     opponentWordIndex,
     words,
     keyStats,
+    youReady,
+    opponentReady,
+    readyExpiresAt,
     reset,
   } = useGameStore()
 
@@ -108,12 +114,22 @@ export default function Game() {
     },
   })
 
-  // Redirect if no match info
+  // A direct reload on /game/:id must leave time for the socket to restore the
+  // authoritative match before treating the route as stale.
   useEffect(() => {
-    if (!matchInfo && status === 'idle') {
-      navigate('/dashboard')
+    if (!matchInfo && status === 'idle' && matchId) {
+      setRecoveringMatch(true)
+      const timeout = window.setTimeout(() => {
+        const current = useGameStore.getState()
+        if (!current.matchInfo && current.status === 'idle') {
+          setRecoveringMatch(false)
+          navigate('/dashboard')
+        }
+      }, 45000)
+      return () => window.clearTimeout(timeout)
     }
-  }, [matchInfo, status, navigate])
+    setRecoveringMatch(false)
+  }, [matchId, matchInfo, status, navigate])
 
 
   // Synchronized Start Logic
@@ -127,9 +143,9 @@ export default function Game() {
         const diff = startTime - now
 
         if (diff <= 0) {
-          // Game Time!
-          setAutoStartCountdown(null)
-          useGameStore.setState({ status: 'playing' })
+          // Keep input locked until the server confirms both players are
+          // connected and the match is ACTIVE.
+          setAutoStartCountdown(0)
           return
         }
 
@@ -149,6 +165,19 @@ export default function Game() {
       setAutoStartCountdown(null)
     }
   }, [status, startTime, timeOffset])
+
+  useEffect(() => {
+    if (status !== 'waiting' || startTime || !readyExpiresAt) {
+      setReadySecondsLeft(null)
+      return
+    }
+    const updateReadyClock = () => {
+      setReadySecondsLeft(Math.max(0, Math.ceil((readyExpiresAt - (Date.now() + timeOffset)) / 1000)))
+    }
+    updateReadyClock()
+    const timer = window.setInterval(updateReadyClock, 250)
+    return () => window.clearInterval(timer)
+  }, [status, startTime, readyExpiresAt, timeOffset])
 
   // Game timer - starts when status becomes 'playing'
   useEffect(() => {
@@ -176,21 +205,6 @@ export default function Game() {
     return () => clearInterval(interval)
   }, [status, timeOffset, startTime, matchDuration])
 
-  // Safety timeout: if game is stuck at 0 seconds without GAME_END, reset after 5 seconds
-  useEffect(() => {
-    if (status === 'playing' && timeRemaining === 0) {
-      const safetyTimeout = setTimeout(() => {
-        const currentStatus = useGameStore.getState().status
-        const currentTime = useGameStore.getState().timeRemaining
-        if (currentStatus === 'playing' && currentTime === 0) {
-          reset()
-          navigate('/dashboard')
-        }
-      }, 30000)  // Wait 30 seconds for GAME_END before resetting (prevents race conditions)
-      return () => clearTimeout(safetyTimeout)
-    }
-  }, [status, timeRemaining, reset, navigate])
-
   // Play Again: leave queue, reset, wait, then join queue
   const handlePlayAgain = useCallback(() => {
     leaveQueue();
@@ -199,6 +213,17 @@ export default function Game() {
       navigate('/dashboard');
     }, 500); // 500ms delay for backend cleanup
   }, [leaveQueue, reset, navigate])
+
+  const handleCancelReady = () => {
+    leaveQueue()
+    useGameStore.getState().cancelPendingMatch('Match cancelled. No stats or rewards changed.')
+    navigate('/dashboard')
+  }
+
+  const handleConfirmLeave = () => {
+    setConfirmLeave(false)
+    leaveMatch()
+  }
 
   // Render based on game state
   return (
@@ -248,13 +273,57 @@ export default function Game() {
                     </div>
                   </div>
 
-                  <div aria-live="polite" className="mt-14 flex min-h-24 flex-col items-center justify-center">
-                    {autoStartCountdown !== null && autoStartCountdown > 0 ? (
-                      <span className="font-mono text-7xl font-medium tabular-nums tracking-tight text-white">{autoStartCountdown}</span>
-                    ) : autoStartCountdown === null ? (
-                      <span className="text-sm text-white/45">Preparing match…</span>
+                  <div aria-live="polite" className="mt-10 flex min-h-36 flex-col items-center justify-center">
+                    {startTime ? (
+                      <>
+                        {autoStartCountdown !== null && autoStartCountdown > 0 ? (
+                          <>
+                            <p className="mb-3 text-xs uppercase tracking-[0.16em] text-white/40">Match starts in</p>
+                            <span className="font-mono text-7xl font-medium tabular-nums tracking-tight text-white">{autoStartCountdown}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span aria-hidden="true" className="mb-4 h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-rose-300" />
+                            <p className="text-lg font-semibold text-white">Connecting players</p>
+                            <p className="mt-2 text-sm text-white/45">
+                              {isConnected ? 'Waiting for the server to confirm the start…' : 'Reconnecting. Your match will resume automatically.'}
+                            </p>
+                          </>
+                        )}
+                      </>
                     ) : (
-                      <span className="text-2xl font-semibold text-rose-300">Go</span>
+                      <>
+                        <p className="text-lg font-semibold text-white">{youReady ? 'You’re ready' : 'Ready when you are'}</p>
+                        <p className="mt-2 text-sm text-white/45">
+                          {!isConnected
+                            ? 'Reconnecting to the match service…'
+                            : youReady && !opponentReady
+                              ? 'Waiting for your opponent to get ready'
+                              : opponentReady
+                                ? 'Your opponent is ready'
+                                : 'Both players must be ready before the race starts'}
+                        </p>
+                        {readySecondsLeft !== null && (
+                          <p className="mt-2 font-mono text-xs tabular-nums text-white/30">{readySecondsLeft}s</p>
+                        )}
+                        <div className="mt-6 flex flex-wrap justify-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => matchInfo && readyForMatch(matchInfo.matchId)}
+                            disabled={!isConnected || youReady || !matchInfo}
+                            className="min-w-36 rounded-xl bg-rose-400 px-6 py-3 text-sm font-semibold text-white transition hover:bg-rose-300 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
+                          >
+                            {youReady ? 'Ready' : 'I’m ready'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelReady}
+                            className="rounded-xl border border-white/10 px-5 py-3 text-sm text-white/55 transition hover:border-white/20 hover:text-white"
+                          >
+                            Cancel match
+                          </button>
+                        </div>
+                      </>
                     )}
                   </div>
                 </section>
@@ -324,7 +393,8 @@ export default function Game() {
               </div>
 
               {/* Opponent Stats (Top Right) */}
-              <div className="flex flex-col gap-0.5 sm:gap-1 items-end text-right">
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-0.5 sm:gap-1 items-end text-right">
                 <div className="flex items-center gap-1 sm:gap-2">
                   {matchInfo?.opponentIsBot && (
                     <span className="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 bg-violet-500/20 text-violet-300 rounded border border-violet-500/30">AI</span>
@@ -344,6 +414,16 @@ export default function Game() {
                     </>
                   )}
                 </div>
+                </div>
+                {status === 'playing' && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmLeave(true)}
+                    className="rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-white/45 transition hover:border-rose-300/30 hover:text-rose-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-400"
+                  >
+                    Leave
+                  </button>
+                )}
               </div>
             </header>
 
@@ -378,6 +458,29 @@ export default function Game() {
           </motion.div>
         )}
       </AnimatePresence>
+      {status === 'idle' && recoveringMatch && (
+        <div role="status" aria-live="polite" className="fixed inset-0 z-[60] grid place-items-center bg-[#070708] px-5 text-center">
+          <section className="max-w-sm">
+            <span aria-hidden="true" className="mx-auto mb-5 block h-7 w-7 animate-spin rounded-full border-2 border-white/15 border-t-rose-300" />
+            <h1 className="text-xl font-semibold tracking-tight text-white">Rejoining your match</h1>
+            <p className="mt-2 text-sm leading-6 text-white/50">
+              {isConnected ? 'Restoring the match state…' : 'Waiting for a stable connection. Your match is being kept safe.'}
+            </p>
+          </section>
+        </div>
+      )}
+      {confirmLeave && status === 'playing' && (
+        <div role="alertdialog" aria-modal="true" aria-labelledby="leave-match-title" className="fixed inset-0 z-[80] grid place-items-center bg-black/75 px-5 backdrop-blur-sm">
+          <section className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#101012] p-6 shadow-2xl">
+            <h2 id="leave-match-title" className="text-lg font-semibold text-white">Leave this match?</h2>
+            <p className="mt-2 text-sm leading-6 text-white/55">Your opponent will win by forfeit. You won’t receive match rewards.</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setConfirmLeave(false)} className="rounded-lg border border-white/10 px-4 py-2 text-sm text-white/60 hover:text-white">Keep playing</button>
+              <button type="button" onClick={handleConfirmLeave} className="rounded-lg bg-rose-400 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-300">Leave match</button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   )
 }

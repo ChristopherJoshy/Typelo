@@ -58,7 +58,7 @@
 import asyncio
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, List, Callable, Awaitable
 from dataclasses import dataclass, field
 import logging
@@ -86,6 +86,11 @@ LEADERBOARD_COIN_BONUS = 0.20  # 20% extra coins for top 4-10
 TOP_3_COIN_BONUS = 0.50  # 50% extra coins for top 3 players
 INPUT_DELIVERY_GRACE_SECONDS = 1.5
 MIN_REWARD_CORRECT_CHARACTERS = 15
+MATCH_READY_TIMEOUT_SECONDS = 45
+MATCH_START_COUNTDOWN_SECONDS = 5
+MATCH_CALLBACK_TIMEOUT_SECONDS = 45
+MATCH_START_CONNECTION_GRACE_SECONDS = 30
+MATCH_START_RETRY_COUNTDOWN_SECONDS = 3
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +196,11 @@ class GameSession:
     # Timer guard to prevent multiple timer tasks
     _timer_started: bool = False
     _bot_started: bool = False
+    ready_players: set[str] = field(default_factory=set)
+    ready_event: asyncio.Event = field(default_factory=asyncio.Event)
+    ready_deadline_monotonic: Optional[float] = None
+    player_session_ids: Dict[str, str] = field(default_factory=dict)
+    start_acknowledged_players: set[str] = field(default_factory=set)
     
     # Callbacks
     _on_opponent_progress: Dict[str, Callable[[int, int], Awaitable[None]]] = field(default_factory=dict)
@@ -365,128 +375,242 @@ class GameService:
             return self._sessions.get(match_id)
         return None
     
+    @staticmethod
+    def _required_ready_uids(session: GameSession) -> list[str]:
+        players = [session.player1]
+        if not session.player2.is_bot:
+            players.append(session.player2)
+        return [player.uid for player in players]
+
+    def all_players_ready(self, session: GameSession) -> bool:
+        return all(uid in session.ready_players for uid in self._required_ready_uids(session))
+
+    def mark_player_ready(self, match_id: str, player_uid: str) -> bool:
+        """Record explicit readiness from a human participant."""
+        session = self._sessions.get(match_id)
+        if not session or session.state != MatchState.PREPARING:
+            return False
+        if player_uid not in self._required_ready_uids(session):
+            return False
+
+        session.ready_players.add(player_uid)
+        if self.all_players_ready(session):
+            session.ready_event.set()
+        return True
+
+    def get_ready_status(self, match_id: str, player_uid: str) -> Optional[dict]:
+        session = self._sessions.get(match_id)
+        if not session or player_uid not in self._required_ready_uids(session):
+            return None
+
+        opponent = session.player2 if session.player1.uid == player_uid else session.player1
+        opponent_ready = opponent.is_bot or opponent.uid in session.ready_players
+        expires_at = None
+        if session.ready_deadline_monotonic is not None:
+            remaining = max(0.0, session.ready_deadline_monotonic - time.monotonic())
+            expires_at = int((time.time() + remaining) * 1000)
+
+        return {
+            "type": "MATCH_READY_STATUS",
+            "match_id": match_id,
+            "you_ready": player_uid in session.ready_players,
+            "opponent_ready": opponent_ready,
+            "ready_count": sum(uid in session.ready_players for uid in self._required_ready_uids(session)),
+            "required_count": len(self._required_ready_uids(session)),
+            "expires_at": expires_at,
+        }
+
+    async def cancel_match_before_start(self, match_id: str, reason: str) -> bool:
+        """Cancel an unstarted match without a result, ELO change, or reward."""
+        session = self._sessions.get(match_id)
+        if not session or session.state not in (MatchState.PREPARING, MatchState.WAITING):
+            return False
+
+        session.state = MatchState.FINISHED
+        session.ready_event.set()
+        if session.bot:
+            session.bot.stop()
+
+        current_task = asyncio.current_task()
+        tasks = [task for task in self._match_tasks.get(match_id, ()) if task is not current_task]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._match_tasks.pop(match_id, None)
+
+        try:
+            from app.routers.match import manager
+            for player in (session.player1, session.player2):
+                if not player.is_bot:
+                    await manager.send_json(player.uid, {
+                        "type": "MATCH_CANCELLED",
+                        "match_id": match_id,
+                        "reason": reason,
+                    })
+        except Exception as error:
+            logger.warning("Could not notify players that match %s was cancelled: %s", match_id, error)
+
+        try:
+            from app.services.matchmaking import matchmaking_service
+            await matchmaking_service.cleanup_after_match(
+                session.player1.uid,
+                session.player2.uid,
+                is_training=session.is_training,
+            )
+        except Exception as error:
+            logger.warning("Could not clear matchmaking state for cancelled match %s: %s", match_id, error)
+
+        self._cleanup_session(match_id)
+        logger.info("Cancelled match %s before start (%s); no result recorded", match_id, reason)
+        return True
+
     async def start_game(self, match_id: str) -> None:
-        """Prepare game session (game starts on first keystroke)"""
+        """Wait for explicit player readiness before scheduling a match."""
         if match_id in self._starting_matches:
-            logger.debug(f"Game session {match_id} already starting via another task")
+            logger.debug("Game session %s is already waiting to start", match_id)
             return
 
         session = self._sessions.get(match_id)
-        if not session:
+        if not session or session.started_at is not None:
             return
-        
-        # Only prepare the session once (avoid duplicate calls)
-        if session.started_at is not None:
-            logger.debug(f"Game session {match_id} already prepared, skipping")
-            return
-        
-        # Lock this match ID
+
         self._starting_matches.add(match_id)
-        
         try:
-            # For PvP matches, wait for both players to register callbacks
-            if not session.player2.is_bot:
-                max_wait = 15.0  # 15 seconds for callback registration
-                wait_interval = 0.2  # Check more frequently
-                waited = 0.0
-                
-                logger.info(f"Waiting for both players to register callbacks for match {match_id}")
-                logger.info(f"  Player 1: {session.player1.uid}, Player 2: {session.player2.uid}")
-                
-                while waited < max_wait:
-                    # Check if both players have registered their callbacks
-                    p1_ready = session.player1.uid in session._on_game_start
-                    p2_ready = session.player2.uid in session._on_game_start
-                    
-                    if p1_ready and p2_ready:
-                        logger.info(f"Both players ready for match {match_id} (waited {waited:.1f}s)")
-                        break
-                    
-                    # Log progress every 2 seconds
-                    if waited > 0 and waited % 2.0 < wait_interval:
-                        logger.info(f"Still waiting for callbacks in {match_id}: p1_ready={p1_ready}, p2_ready={p2_ready}, waited={waited:.1f}s")
-                    
-                    await asyncio.sleep(wait_interval)
-                    waited += wait_interval
-                
-                if waited >= max_wait:
-                    # Log which player(s) didn't register
-                    p1_ready = session.player1.uid in session._on_game_start
-                    p2_ready = session.player2.uid in session._on_game_start
-                    logger.warning(f"Timeout waiting for players in match {match_id}. p1_ready={p1_ready}, p2_ready={p2_ready}")
-                    
-                    # If one or both players didn't connect, forfeit the match
-                    if not p1_ready and not p2_ready:
-                        logger.error(f"Both players failed to register for match {match_id}")
-                        await self._forfeit_match(match_id, None)  # Both forfeit
-                        return
-                    elif not p1_ready:
-                        logger.warning(f"Player 1 not ready, forfeiting for {match_id}")
-                        await self._forfeit_match(match_id, session.player1.uid)
-                        return
-                    elif not p2_ready:
-                        logger.warning(f"Player 2 not ready, forfeiting for {match_id}")
-                        await self._forfeit_match(match_id, session.player2.uid)
-                        return
-            
-            # Mark as started AFTER callbacks are confirmed registered
-            # Synchronized Start: Schedule game start for the future (5 seconds from now)
-            # This ensures both players have time to receive the message and start their local countdowns.
-            current_time = datetime.now(timezone.utc)
-            start_delay_seconds = 5
-            scheduled_start_time = datetime.fromtimestamp(current_time.timestamp() + start_delay_seconds, timezone.utc)
-            
+            required_uids = self._required_ready_uids(session)
+            callback_deadline = time.monotonic() + MATCH_CALLBACK_TIMEOUT_SECONDS
+            while any(uid not in session._on_game_start for uid in required_uids):
+                if session.state == MatchState.FINISHED:
+                    return
+                if time.monotonic() >= callback_deadline:
+                    logger.warning("Timed out waiting for match connections: %s", match_id)
+                    await self.cancel_match_before_start(match_id, "connection_lost")
+                    return
+                await asyncio.sleep(0.2)
+
+            session.ready_deadline_monotonic = time.monotonic() + MATCH_READY_TIMEOUT_SECONDS
+            from app.routers.match import manager
+            for uid in required_uids:
+                status = self.get_ready_status(match_id, uid)
+                if status:
+                    await manager.send_json(uid, status)
+
+            while session.state == MatchState.PREPARING and not self.all_players_ready(session):
+                remaining = (session.ready_deadline_monotonic or time.monotonic()) - time.monotonic()
+                if remaining <= 0:
+                    await self.cancel_match_before_start(match_id, "not_ready")
+                    return
+                session.ready_event.clear()
+                try:
+                    await asyncio.wait_for(session.ready_event.wait(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    pass
+
+            if session.state != MatchState.PREPARING:
+                return
+            if not self.all_players_ready(session):
+                await self.cancel_match_before_start(match_id, "not_ready")
+                return
+
+            scheduled_start_time = datetime.fromtimestamp(
+                datetime.now(timezone.utc).timestamp() + MATCH_START_COUNTDOWN_SECONDS,
+                timezone.utc,
+            )
             session.started_at = scheduled_start_time
             session.state = MatchState.WAITING
-            
-            logger.info(f"Game session ready: {match_id}. Scheduling start at {scheduled_start_time} (in {start_delay_seconds}s)")
-            
-            # Timestamp in milliseconds for the frontend
             start_timestamp_ms = int(scheduled_start_time.timestamp() * 1000)
-            
-            # 1. Notify players immediately with the FUTURE start timestamp
-            async def notify_start(uid: str) -> bool:
-                if uid not in session._on_game_start or uid == "BOT":
-                    return True
-                return await notify_with_retry(
-                    session._on_game_start[uid],
-                    start_timestamp_ms, 
-                    session.duration,
-                    label=f"GAME_START for {uid} (scheduled)"
-                )
-            
-            results = await asyncio.gather(
-                notify_start(session.player1.uid),
-                notify_start(session.player2.uid),
-                return_exceptions=True
-            )
-            successful = sum(1 for r in results if r is True)
-            logger.info(f"GAME_START scheduled delivered to {successful}/2 players for {match_id}")
 
-            # 2. Schedule the actual state transition and timer start on the backend
+            async def notify_start(uid: str, timestamp_ms: int, retry: bool = True) -> bool:
+                callback = session._on_game_start.get(uid)
+                if not callback:
+                    return False
+                if retry:
+                    return await notify_with_retry(
+                        callback,
+                        timestamp_ms,
+                        session.duration,
+                        label=f"GAME_START for {uid} (scheduled)",
+                    )
+                try:
+                    return await asyncio.wait_for(
+                        callback(timestamp_ms, session.duration),
+                        timeout=2.0,
+                    ) is not False
+                except Exception as error:
+                    logger.info("Could not refresh GAME_START for %s: %s", uid, error)
+                    return False
+
+            delivered = await asyncio.gather(
+                *(notify_start(uid, start_timestamp_ms) for uid in required_uids),
+                return_exceptions=True,
+            )
+            if any(result is not True for result in delivered):
+                # Keep the authoritative start timestamp. A reconnect restores
+                # match state, so a dropped countdown frame does not cancel a
+                # match both players have already accepted.
+                logger.info("One or more GAME_START frames are awaiting reconnect for %s", match_id)
+
             async def scheduled_start():
-                await asyncio.sleep(max(0, (scheduled_start_time - datetime.now(timezone.utc)).total_seconds()))
-                
+                current_start = scheduled_start_time
+                connection_grace_deadline = time.monotonic() + MATCH_START_CONNECTION_GRACE_SECONDS
+
+                while session.state == MatchState.WAITING:
+                    delay = max(0, (current_start - datetime.now(timezone.utc)).total_seconds())
+                    if delay:
+                        await asyncio.sleep(delay)
+                    if session.state != MatchState.WAITING:
+                        return
+
+                    from app.routers.match import manager
+                    missing_players = [
+                        uid for uid in required_uids
+                        if manager.get_connection(uid) is None
+                        or manager.user_info.get(uid, {}).get("client_session_id")
+                        != session.player_session_ids.get(uid, "legacy")
+                    ]
+                    start_acknowledged = all(uid in session.start_acknowledged_players for uid in required_uids)
+                    if missing_players or not start_acknowledged:
+                        if time.monotonic() >= connection_grace_deadline:
+                            await self.cancel_match_before_start(match_id, "connection_lost")
+                            return
+
+                        # Move the shared start forward while a ready player
+                        # reconnects. Connected players see the new countdown;
+                        # reconnecting players receive it from MATCH_RESTORED.
+                        current_start = datetime.now(timezone.utc) + timedelta(
+                            seconds=MATCH_START_RETRY_COUNTDOWN_SECONDS
+                        )
+                        session.started_at = current_start
+                        session.start_acknowledged_players.clear()
+                        next_timestamp_ms = int(current_start.timestamp() * 1000)
+                        connected_uids = [uid for uid in required_uids if uid not in missing_players]
+                        await asyncio.gather(
+                            *(notify_start(uid, next_timestamp_ms, retry=False) for uid in connected_uids),
+                            return_exceptions=True,
+                        )
+                        continue
+
+                    session.started_at = current_start
+                    break
+
                 if session.state != MatchState.WAITING:
-                    logger.warning(f"Aborting scheduled start for {match_id} - state is {session.state}")
                     return
 
-                logger.info(f"Executing scheduled start for game {match_id}")
                 session.state = MatchState.ACTIVE
-                
-                # Start Bot (if applicable)
+                logger.info("Starting ready match %s", match_id)
                 if session.bot and not session._bot_started:
                     session._bot_started = True
                     self._spawn_match_task(match_id, self._run_bot(session))
-                
-                # Start Timer
                 if not session._timer_started:
                     session._timer_started = True
                     self._spawn_match_task(match_id, self._game_timer(session))
-                
-                # Broadcast public start
+
+                await asyncio.gather(
+                    *(manager.send_json(uid, {"type": "MATCH_ACTIVE", "match_id": match_id}) for uid in required_uids),
+                    return_exceptions=True,
+                )
+
                 try:
-                    from app.routers.match import manager
                     await manager.broadcast_match_started(
                         match_id=match_id,
                         player1_name=session.player1.display_name,
@@ -494,14 +618,12 @@ class GameService:
                         player2_name=session.player2.display_name,
                         player2_photo=session.player2.photo_url,
                         is_bot_match=session.player2.is_bot,
-                        game_mode="training" if session.is_training else ("friends" if session.is_friends_mode else "ranked")
+                        game_mode="training" if session.is_training else ("friends" if session.is_friends_mode else "ranked"),
                     )
-                except Exception as e:
-                    logger.warning(f"Failed to broadcast match started: {e}")
+                except Exception as error:
+                    logger.warning("Failed to broadcast match started: %s", error)
 
-            # Launch the scheduler
             self._spawn_match_task(match_id, scheduled_start())
-            
         finally:
             self._starting_matches.discard(match_id)
             
@@ -588,20 +710,8 @@ class GameService:
         
         logger.debug(f"Keystroke from {player_uid} in match {match_id}: char='{char}', idx={char_index}, state={session.state}")
         
-        # If still preparing (waiting for callbacks), but player is ready, force start
-        if session.state == MatchState.PREPARING:
-            # Check if this player has registered callbacks
-            if player_uid in session._on_game_start:
-                logger.info(f"Session {match_id} stuck in PREPARING, auto-transitioning to WAITING on keystroke from {player_uid}")
-                session.state = MatchState.WAITING
-                if not session.started_at:
-                    session.started_at = datetime.now(timezone.utc)
-            else:
-                logger.debug(f"Keystroke ignored - game {match_id} still preparing and player {player_uid} not ready")
-                return False
-        
-        # Start game on first keystroke from any player
-        # Only start if in WAITING state (not PREPARING - callbacks may not be registered yet)
+        # A match accepts input only after both human players pass the explicit
+        # Ready gate and the server's synchronized start time arrives.
         if session.state == MatchState.WAITING:
             # Synchronized Start Enforcer
             # If the backend is still WAITING, it means the scheduled start time hasn't arrived yet.
@@ -782,7 +892,8 @@ class GameService:
         player_uid: str,
         on_game_start: Callable[[int, int], Awaitable[None]],
         on_opponent_progress: Callable[[int, int], Awaitable[None]],
-        on_game_end: Callable[[MatchResult], Awaitable[None]]
+        on_game_end: Callable[[MatchResult], Awaitable[None]],
+        client_session_id: str = "legacy",
     ) -> None:
         """Register callbacks for a player"""
         session = self._sessions.get(match_id)
@@ -790,6 +901,7 @@ class GameService:
             session._on_game_start[player_uid] = on_game_start
             session._on_opponent_progress[player_uid] = on_opponent_progress
             session._on_game_end[player_uid] = on_game_end
+            session.player_session_ids[player_uid] = client_session_id
     
     async def end_game(self, match_id: str) -> None:
         """End the game and calculate results"""
@@ -1133,6 +1245,7 @@ class GameService:
         p2_result: str,
         *,
         award_coins: bool = True,
+        no_rewards_for_uid: Optional[str] = None,
     ) -> None:
         """Save match results, optionally awarding coins for forfeit matches."""
         try:
@@ -1397,18 +1510,20 @@ class GameService:
                 p1_streak = p1_doc.get("current_win_streak", 0) if p1_doc else 0
                 p2_streak = p2_doc.get("current_win_streak", 0) if p2_doc and not session.player2.is_bot else 0
                 
-                # Update player 1 quests
-                await update_match_quest_progress(
-                    user_uid=session.player1.uid,
-                    won=(p1_result == "win"),
-                    wpm=session.player1.wpm,
-                    accuracy=session.player1.accuracy,
-                    is_training=session.is_training,
-                    current_streak=p1_streak + 1 if p1_result == "win" else 0
-                )
+                # A player who left forfeits the result and cannot progress
+                # match quests from that abandoned game.
+                if session.player1.uid != no_rewards_for_uid:
+                    await update_match_quest_progress(
+                        user_uid=session.player1.uid,
+                        won=(p1_result == "win"),
+                        wpm=session.player1.wpm,
+                        accuracy=session.player1.accuracy,
+                        is_training=session.is_training,
+                        current_streak=p1_streak + 1 if p1_result == "win" else 0
+                    )
                 
                 # Update player 2 quests (if not a bot)
-                if not session.player2.is_bot:
+                if not session.player2.is_bot and session.player2.uid != no_rewards_for_uid:
                     await update_match_quest_progress(
                         user_uid=session.player2.uid,
                         won=(p2_result == "win"),
@@ -1440,14 +1555,14 @@ class GameService:
             del self._sessions[match_id]
     
     async def _forfeit_match(self, match_id: str, disconnected_uid: Optional[str]) -> None:
-        """Handle forfeit when a player fails to connect properly.
+        """Record a forfeit without basing the result on typing statistics.
         
         Args:
             match_id: The match ID
             disconnected_uid: UID of player who failed to connect, or None if both failed
         """
         session = self._sessions.get(match_id)
-        if not session:
+        if not session or session.state == MatchState.FINISHED:
             return
         
         session.state = MatchState.FINISHED
@@ -1545,7 +1660,15 @@ class GameService:
         
         # Save forfeit match to DB (if needed for records)
         try:
-            await self._save_match_to_db(session, p1_elo_change, p2_elo_change, p1_result, p2_result)
+            await self._save_match_to_db(
+                session,
+                p1_elo_change,
+                p2_elo_change,
+                p1_result,
+                p2_result,
+                award_coins=False,
+                no_rewards_for_uid=disconnected_uid,
+            )
         except Exception as e:
             logger.error(f"Failed to save forfeit match: {e}")
         
@@ -1564,7 +1687,7 @@ class GameService:
         self._cleanup_session(match_id)
     
     async def handle_player_disconnect(self, match_id: str, player_uid: str) -> None:
-        """Forfeit pre-game disconnects; let timed matches finish on accepted score."""
+        """Cancel pre-ready disconnects and forfeit active matches after grace."""
         session = self._sessions.get(match_id)
         if not session:
             return
@@ -1576,21 +1699,29 @@ class GameService:
         
         logger.info(f"Player {player_uid} disconnected from match {match_id}, forfeiting...")
         
-        # Once a timed match is active, a disconnect must not override the
-        # score already earned. The match clock remains authoritative and the
-        # timer will settle the result normally if the player does not return.
         if session.state == MatchState.ACTIVE:
-            logger.info(
-                "Keeping active match %s running after %s disconnected; scoring by accepted progress",
-                match_id, player_uid
-            )
+            logger.info("Forfeiting active match %s after %s did not reconnect", match_id, player_uid)
+            await self._forfeit_match(match_id, player_uid)
             return
 
         if session.state in (MatchState.WAITING, MatchState.PREPARING):
-            await self._forfeit_match(match_id, player_uid)
+            # Keep the Ready state through a transient disconnect. The Ready
+            # deadline or synchronized-start reconnect grace will cancel the
+            # match neutrally if the player does not return.
+            logger.info("Keeping pre-start match %s available while %s reconnects", match_id, player_uid)
         else:
             # Just cleanup if already finished
             self._cleanup_session(match_id)
+
+    async def player_leaves_match(self, match_id: str, player_uid: str) -> None:
+        """Handle an explicit leave as a neutral cancel before start or forfeit after start."""
+        session = self._sessions.get(match_id)
+        if not session:
+            return
+        if session.state == MatchState.ACTIVE:
+            await self._forfeit_match(match_id, player_uid)
+        elif session.state in (MatchState.PREPARING, MatchState.WAITING):
+            await self.cancel_match_before_start(match_id, "cancelled")
 
 
 # Singleton instance

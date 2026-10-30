@@ -80,6 +80,7 @@ from app.constants import get_bot_cursor
 
 
 router = APIRouter()
+PENDING_RESULT_TTL_SECONDS = 15 * 60
 
 
 class ConnectionManager:
@@ -156,7 +157,34 @@ class ConnectionManager:
             self._message_counts[user_id] = count + 1
             return True
 
-    async def connect(self, websocket: WebSocket, user_id: str, display_name: str, photo_url: Optional[str], elo: int, client_ip: str, equipped_cursor: str = "default", equipped_effect: Optional[str] = None):
+    async def connect(self, websocket: WebSocket, user_id: str, display_name: str, photo_url: Optional[str], elo: int, client_ip: str, equipped_cursor: str = "default", equipped_effect: Optional[str] = None, client_session_id: str = "legacy") -> bool:
+        active_match_id = game_service.get_active_match_id(user_id)
+        active_match = game_service.get_session(active_match_id) if active_match_id else None
+        active_session_id = active_match.player_session_ids.get(user_id) if active_match else None
+        if active_match and active_match.state in (MatchState.PREPARING, MatchState.WAITING, MatchState.ACTIVE) and active_session_id and active_session_id != client_session_id:
+            await websocket.accept()
+            await websocket.send_json({
+                "type": "SESSION_LOCKED",
+                "match_id": active_match.match_id,
+                "active_session_id": active_session_id,
+            })
+            await websocket.close(code=4402, reason="Match active in another window")
+            return False
+
+        previous_socket = self.active_connections.get(user_id)
+        previous_session_id = self.user_info.get(user_id, {}).get("client_session_id")
+        if previous_socket is not None and previous_session_id != client_session_id:
+            # A new tab owns the idle session now. Remove stale queue entries
+            # before replacing the old socket so its callback cannot create a
+            # match for a connection that is no longer authoritative.
+            try:
+                from app.services.matchmaking import matchmaking_service
+                await matchmaking_service.remove_from_queue(user_id)
+                await matchmaking_service.remove_from_training_queue(user_id)
+                await matchmaking_service.remove_from_friends_queue(user_id)
+            except Exception as error:
+                logger.warning("Could not clear stale queues during session handoff for %s: %s", user_id, error)
+
         await websocket.accept()
         progress_task = self._progress_tasks.pop(user_id, None)
         if progress_task and progress_task is not asyncio.current_task():
@@ -165,7 +193,6 @@ class ConnectionManager:
         pending_forfeit = self._pending_forfeits.pop(user_id, None)
         if pending_forfeit:
             pending_forfeit.cancel()
-        previous_socket = self.active_connections.get(user_id)
         previous_ip = self._user_to_ip.get(user_id)
         if previous_ip and previous_ip != client_ip and self._ip_to_user.get(previous_ip) == user_id:
             del self._ip_to_user[previous_ip]
@@ -176,20 +203,33 @@ class ConnectionManager:
             "photo_url": photo_url,
             "elo": elo,
             "equipped_cursor": equipped_cursor,
-            "equipped_effect": equipped_effect
+            "equipped_effect": equipped_effect,
+            "client_session_id": client_session_id,
         }
         self._ip_to_user[client_ip] = user_id
         self._user_to_ip[user_id] = client_ip
         if previous_socket is not None and previous_socket is not websocket:
             try:
-                await previous_socket.close(code=1000, reason="Connection replaced")
+                if previous_session_id != client_session_id:
+                    await previous_socket.send_json({
+                        "type": "SESSION_REPLACED",
+                        "active_session_id": client_session_id,
+                    })
+                    await previous_socket.close(code=4401, reason="Session replaced")
+                else:
+                    await previous_socket.close(code=1000, reason="Connection refreshed")
             except Exception:
                 logger.debug("Previous connection was already closed for %s", user_id)
         logger.info(f"User {user_id} connected from IP {client_ip}")
         self.start_periodic_broadcast()
         pending_result = self._pending_results.pop(user_id, None)
-        if pending_result and pending_result[0] > time.monotonic():
-            await self.send_json(user_id, pending_result[1])
+        if pending_result:
+            if pending_result[0] > time.monotonic():
+                self._pending_results[user_id] = pending_result
+                await self.send_json(user_id, pending_result[1])
+            else:
+                self._pending_results.pop(user_id, None)
+        return True
 
     def disconnect(self, user_id: str, websocket: Optional[WebSocket] = None):
         if websocket is not None and self.active_connections.get(user_id) is not websocket:
@@ -207,22 +247,38 @@ class ConnectionManager:
         if ip and self._ip_to_user.get(ip) == user_id:
             del self._ip_to_user[ip]
 
-    async def send_json(self, user_id: str, data: dict):
+    async def send_json(self, user_id: str, data: dict) -> bool:
         if data.get("type") == "OPPONENT_PROGRESS":
             data = self._with_progress_sequence(user_id, data)
         websocket = self.active_connections.get(user_id)
-        if websocket is None and data.get("type") == "GAME_END":
+        if data.get("type") == "GAME_END":
             now = time.monotonic()
             self._pending_results = {uid: item for uid, item in self._pending_results.items() if item[0] > now}
-            self._pending_results[user_id] = (now + 60, data)
-        if websocket is not None:
-            try:
-                await self._send_on_socket(user_id, websocket, data, timeout=3)
-            except Exception as e:
-                logger.error(f"Error sending JSON to {user_id}: {e}")
-                self.disconnect(user_id, websocket)
-                if data.get("type") == "GAME_END":
-                    self._pending_results[user_id] = (time.monotonic() + 60, data)
+            current = self._pending_results.get(user_id)
+            if not current or current[1].get("result", {}).get("match_id") != data.get("result", {}).get("match_id"):
+                self._pending_results[user_id] = (now + PENDING_RESULT_TTL_SECONDS, data)
+            else:
+                self._pending_results[user_id] = (current[0], data)
+
+        if websocket is None:
+            return False
+        try:
+            return await self._send_on_socket(user_id, websocket, data, timeout=3)
+        except Exception as e:
+            logger.error(f"Error sending JSON to {user_id}: {e}")
+            self.disconnect(user_id, websocket)
+            return False
+
+    def acknowledge_game_end(self, user_id: str, match_id: Optional[str]) -> bool:
+        """Discard a queued result only after the client confirms receipt."""
+        pending = self._pending_results.get(user_id)
+        if not pending:
+            return False
+        pending_match_id = pending[1].get("result", {}).get("match_id")
+        if match_id and pending_match_id != match_id:
+            return False
+        self._pending_results.pop(user_id, None)
+        return True
 
     def _with_progress_sequence(self, user_id: str, data: dict) -> dict:
         """Stamp progress at enqueue time so coalescing never hides its order."""
@@ -384,6 +440,38 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+def _build_match_restored_message(user_id: str, session) -> dict:
+    player = session.player1 if session.player1.uid == user_id else session.player2
+    opponent = session.player2 if player is session.player1 else session.player1
+    opponent_info = manager.user_info.get(opponent.uid, {})
+    ready_status = game_service.get_ready_status(session.match_id, user_id) or {}
+    return {
+        "type": "MATCH_RESTORED",
+        "match_id": session.match_id,
+        "opponent_display_name": opponent.display_name,
+        "opponent_photo_url": opponent.photo_url,
+        "opponent_rank": opponent.rank.value if hasattr(opponent.rank, "value") else str(opponent.rank),
+        "opponent_elo": opponent.elo,
+        "opponent_is_bot": opponent.is_bot,
+        "words": session.words,
+        "game_mode": "training" if session.is_training else ("friends" if session.is_friends_mode else "ranked"),
+        "opponent_cursor": opponent_info.get("equipped_cursor", "default"),
+        "opponent_effect": opponent_info.get("equipped_effect"),
+        "state": session.state.value,
+        "started_at": int(session.started_at.timestamp() * 1000) if session.started_at else None,
+        "duration": session.duration,
+        "you_ready": user_id in session.ready_players,
+        "opponent_ready": opponent.is_bot or opponent.uid in session.ready_players,
+        "ready_expires_at": ready_status.get("expires_at"),
+        "player_progress": {
+            "current_char_index": player.current_char_index,
+            "current_word_index": player.current_word_index,
+            "final_characters": player.final_characters,
+            "errors": player.errors,
+        },
+    }
+
+
 async def _gate_input_event(user_id: str, player, event_id) -> bool:
     """Deduplicate reliable input replays and request missing event frames."""
     if event_id is None:
@@ -425,7 +513,8 @@ async def match_websocket(
     user_id: str = Query(..., max_length=128),
     display_name: str = Query(..., max_length=100),
     photo_url: Optional[str] = Query(None, max_length=500),
-    elo: int = Query(0, ge=0, le=50000)
+    elo: int = Query(0, ge=0, le=50000),
+    client_session_id: str = Query("legacy", min_length=1, max_length=128),
 ):
     settings = get_settings()
     origin = websocket.headers.get("origin")
@@ -512,7 +601,19 @@ async def match_websocket(
         await websocket.close(code=1008, reason="Another account is already playing from this network. Only one player per IP is allowed.")
         return
     
-    await manager.connect(websocket, user_id, display_name, photo_url, elo, client_ip, equipped_cursor, equipped_effect)
+    accepted = await manager.connect(
+        websocket,
+        user_id,
+        display_name,
+        photo_url,
+        elo,
+        client_ip,
+        equipped_cursor,
+        equipped_effect,
+        client_session_id,
+    )
+    if not accepted:
+        return
     await manager.broadcast_online_count()
     await manager.broadcast_online_users()
     
@@ -526,12 +627,15 @@ async def match_websocket(
     # A reconnect keeps the in-memory match alive. Restore the authoritative
     # start time and opponent position before replaying any buffered input.
     active_session = game_service.get_session(current_match_id) if current_match_id else None
-    if active_session and active_session.state in (MatchState.WAITING, MatchState.ACTIVE):
+    if active_session and active_session.state in (MatchState.PREPARING, MatchState.WAITING, MatchState.ACTIVE):
+        await manager.send_json(user_id, _build_match_restored_message(user_id, active_session))
         if active_session.started_at:
             await manager.send_json(user_id, GameStartMessage(
                 timestamp=int(active_session.started_at.timestamp() * 1000),
                 duration=active_session.duration,
             ).model_dump())
+        if active_session.state == MatchState.ACTIVE:
+            await manager.send_json(user_id, {"type": "MATCH_ACTIVE", "match_id": active_session.match_id})
         if active_session.player1.uid == user_id:
             current_player, opponent = active_session.player1, active_session.player2
         else:
@@ -671,6 +775,7 @@ async def match_websocket(
                             opponent_cursor = opponent.equipped_cursor
                             opponent_effect = opponent.equipped_effect
                         
+                        session.player_session_ids[user_id] = client_session_id
                         opponent_elo_value = elo if pending.is_bot_match else opponent.elo
                         match_msg = MatchFoundMessage(
                             match_id=pending.match_id,
@@ -694,7 +799,9 @@ async def match_websocket(
                                 timestamp=timestamp,
                                 duration=duration
                             )
-                            await manager.send_json(user_id, start_msg.model_dump())
+                            delivered = await manager.send_json(user_id, start_msg.model_dump())
+                            if not delivered:
+                                raise RuntimeError("GAME_START was not delivered")
                             logger.info(f"GAME_START sent to {user_id}")
                         
                         async def on_opponent_progress(char_index: int, word_index: int):
@@ -711,14 +818,15 @@ async def match_websocket(
                                 "type": "GAME_END",
                                 "result": result.model_dump()
                             }
-                            await manager.send_json(user_id, end_msg)
+                            return await manager.send_json(user_id, end_msg)
                         
                         game_service.register_callbacks(
                             pending.match_id,
                             user_id,
                             on_game_start,
                             on_opponent_progress,
-                            on_game_end
+                            on_game_end,
+                            client_session_id=client_session_id,
                         )
                         logger.info(f"Callbacks registered for {user_id} in match {pending.match_id}")
                         
@@ -779,14 +887,55 @@ async def match_websocket(
                     "server_time": int(time.time() * 1000),
                     "timestamp": data.get("timestamp"),
                 })
+
+            elif message_type == "GAME_END_ACK":
+                manager.acknowledge_game_end(user_id, data.get("match_id"))
+
+            elif message_type == "GAME_START_ACK":
+                requested_match_id = data.get("match_id")
+                session = game_service.get_session(requested_match_id) if requested_match_id == current_match_id else None
+                timestamp = data.get("timestamp")
+                if (
+                    session
+                    and session.state == MatchState.WAITING
+                    and session.started_at
+                    and isinstance(timestamp, (int, float))
+                    and int(session.started_at.timestamp() * 1000) == int(timestamp)
+                    and user_id in game_service._required_ready_uids(session)
+                ):
+                    session.start_acknowledged_players.add(user_id)
+
+            elif message_type == "READY_FOR_MATCH":
+                requested_match_id = data.get("match_id")
+                if requested_match_id != current_match_id:
+                    continue
+                if not game_service.mark_player_ready(requested_match_id, user_id):
+                    continue
+                session = game_service.get_session(requested_match_id)
+                if session:
+                    for player in (session.player1, session.player2):
+                        if player.is_bot:
+                            continue
+                        ready_status = game_service.get_ready_status(requested_match_id, player.uid)
+                        if ready_status:
+                            await manager.send_json(player.uid, ready_status)
+
+            elif message_type == "LEAVE_MATCH":
+                if current_match_id:
+                    await game_service.player_leaves_match(current_match_id, user_id)
+                    current_match_id = None
             
             elif message_type == "LEAVE_QUEUE":
+                if current_match_id:
+                    await game_service.cancel_match_before_start(current_match_id, "cancelled")
+                    current_match_id = None
                 if in_queue:
                     in_queue = False
                     if queue_task:
                         queue_task.cancel()
                     await matchmaking_service.remove_from_queue(user_id)
                     await matchmaking_service.remove_from_training_queue(user_id)
+                    await matchmaking_service.remove_from_friends_queue(user_id)
             
             elif message_type == "JOIN_TRAINING_QUEUE":
                 if in_queue:
@@ -856,6 +1005,7 @@ async def match_websocket(
                             opponent_effect = opponent.equipped_effect
                         
                         opponent_elo_value = elo if pending.is_bot_match else opponent.elo
+                        session.player_session_ids[user_id] = client_session_id
                         match_msg = MatchFoundMessage(
                             match_id=pending.match_id,
                             opponent_display_name=opponent_name,
@@ -877,7 +1027,9 @@ async def match_websocket(
                                 timestamp=timestamp,
                                 duration=duration
                             )
-                            await manager.send_json(user_id, start_msg.model_dump())
+                            delivered = await manager.send_json(user_id, start_msg.model_dump())
+                            if not delivered:
+                                raise RuntimeError("GAME_START was not delivered")
                         
                         async def on_opponent_progress(char_index: int, word_index: int):
                             progress_msg = OpponentProgressMessage(
@@ -893,14 +1045,15 @@ async def match_websocket(
                                 "type": "GAME_END",
                                 "result": result.model_dump()
                             }
-                            await manager.send_json(user_id, end_msg)
+                            return await manager.send_json(user_id, end_msg)
                         
                         game_service.register_callbacks(
                             pending.match_id,
                             user_id,
                             on_game_start,
                             on_opponent_progress,
-                            on_game_end
+                            on_game_end,
+                            client_session_id=client_session_id,
                         )
                         logger.info(f"Training callbacks registered for {user_id}")
                         
@@ -1010,6 +1163,7 @@ async def match_websocket(
                         opponent_cursor = opponent.equipped_cursor
                         opponent_effect = opponent.equipped_effect
                         
+                        session.player_session_ids[user_id] = client_session_id
                         match_msg = MatchFoundMessage(
                             match_id=pending.match_id,
                             opponent_display_name=opponent_name,
@@ -1031,7 +1185,9 @@ async def match_websocket(
                                 timestamp=timestamp,
                                 duration=duration
                             )
-                            await manager.send_json(user_id, start_msg.model_dump())
+                            delivered = await manager.send_json(user_id, start_msg.model_dump())
+                            if not delivered:
+                                raise RuntimeError("GAME_START was not delivered")
                         
                         async def on_opponent_progress(char_index: int, word_index: int):
                             progress_msg = OpponentProgressMessage(
@@ -1047,14 +1203,15 @@ async def match_websocket(
                                 "type": "GAME_END",
                                 "result": result.model_dump()
                             }
-                            await manager.send_json(user_id, end_msg)
+                            return await manager.send_json(user_id, end_msg)
                         
                         game_service.register_callbacks(
                             pending.match_id,
                             user_id,
                             on_game_start,
                             on_opponent_progress,
-                            on_game_end
+                            on_game_end,
+                            client_session_id=client_session_id,
                         )
                         logger.info(f"Friends callbacks registered for {user_id}")
                         

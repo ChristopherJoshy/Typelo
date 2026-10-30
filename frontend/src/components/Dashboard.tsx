@@ -94,8 +94,8 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { user, stats, signOut, refreshStats } = useAuth()
   const { idToken } = useAuthStore()
-  const { joinQueue, joinTrainingQueue, joinFriendsQueue, leaveQueue, isConnected } = useWebSocket()
-  const { status, queueElapsed, matchInfo, gameMode } = useGameStore()
+  const { joinQueue, joinTrainingQueue, joinFriendsQueue, leaveQueue, isConnected, connectionMessage, retryConnection } = useWebSocket()
+  const { status, queueElapsed, matchInfo, gameMode, matchNotice, clearMatchNotice } = useGameStore()
   const { equippedBackground, fetchProfileInventory } = useInventoryStore()
 
   const [isConnecting, setIsConnecting] = useState(false)
@@ -373,7 +373,11 @@ export default function Dashboard() {
 
   const handleCancelQueue = () => {
     leaveQueue()
-    useGameStore.getState().leaveQueue()
+    if (matchInfo) {
+      useGameStore.getState().cancelPendingMatch('Match cancelled. No stats or rewards changed.')
+    } else {
+      useGameStore.getState().leaveQueue()
+    }
   }
 
   const formatQueueTime = (seconds: number) => {
@@ -522,6 +526,25 @@ export default function Dashboard() {
         </div>
       </motion.header>
 
+      {(matchNotice || connectionMessage) && (
+        <div className="relative z-20 mx-auto mb-2 flex w-[calc(100%-2rem)] max-w-2xl flex-col gap-2">
+          {matchNotice && (
+            <div role="status" className="flex items-start justify-between gap-4 rounded-xl border border-white/10 bg-[#101012]/90 px-4 py-3 text-sm text-white/65 shadow-lg backdrop-blur">
+              <p>{matchNotice}</p>
+              <button type="button" aria-label="Dismiss match notice" onClick={clearMatchNotice} className="shrink-0 text-white/35 transition hover:text-white">×</button>
+            </div>
+          )}
+          {connectionMessage && (
+            <div role="status" className="flex items-center justify-between gap-4 rounded-xl border border-rose-300/15 bg-[#101012]/90 px-4 py-3 text-sm text-white/65 shadow-lg backdrop-blur">
+              <span>{connectionMessage}</span>
+              {!isConnected && (
+                <button type="button" onClick={retryConnection} className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-white/65 transition hover:border-rose-300/30 hover:text-white">Retry</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="flex flex-col lg:flex-row px-6 sm:px-12 pb-24 lg:pb-12 gap-12 relative">
         {/* Left Panel - User Stats */}
@@ -571,7 +594,7 @@ export default function Dashboard() {
                   data-mode={selectedMode}
                   className="match-mode-button h-16 w-full rounded-xl px-6 text-base font-semibold text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40 disabled:shadow-none"
                 >
-                  {isConnecting ? 'Connecting…' : !isConnected ? 'Reconnecting…' : 'Find a match'}
+                  {isConnecting ? 'Connecting…' : !isConnected ? connectionMessage ? 'Server unavailable' : 'Reconnecting…' : 'Find a match'}
                 </button>
 
                 {cooldown > 0 && (
@@ -613,7 +636,7 @@ export default function Dashboard() {
                   <h2 className="text-lg font-semibold text-white">Finding an opponent</h2>
                 </div>
                 <p className="text-sm text-white/45">
-                  {isConnected ? 'Searching for a player…' : 'Reconnecting to the match service…'}
+                  {isConnected ? 'Searching for a player…' : connectionMessage || 'Reconnecting to the match service…'}
                 </p>
                 <p aria-label="Time in queue" className="font-mono text-4xl tabular-nums tracking-tight text-white">
                   {formatQueueTime(queueElapsed)}

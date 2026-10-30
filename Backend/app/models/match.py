@@ -51,8 +51,8 @@ from enum import Enum
 
 class MatchState(str, Enum):
     """Match state machine"""
-    PREPARING = "preparing"  # Session created, waiting for callbacks to be registered
-    WAITING = "waiting"  # Both players ready, waiting for first keystroke
+    PREPARING = "preparing"  # Players confirm they are ready before a match starts
+    WAITING = "waiting"  # Both players are ready; the synchronized start is scheduled
     ACTIVE = "active"
     FINISHED = "finished"
 

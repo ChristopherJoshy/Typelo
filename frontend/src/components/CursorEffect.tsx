@@ -36,7 +36,8 @@ interface CursorEffectProps {
   progress?: string | number
 }
 
-const MAX_PARTICLES = 64
+const MAX_PARTICLES = 72
+const MAX_TRAIL_POINTS = 42
 const PIXEL_RATIO_LIMIT = 1.5
 const FRAME_BUDGET_MS = 34
 
@@ -105,11 +106,11 @@ export default function CursorEffect({ effectId, targetRef, caret, progress }: C
       context.clearRect(0, 0, width, height)
       context.save()
       const trailPoint = trailPoints[trailPoints.length - 1]
-      if (pointer.active && (!trailPoint || Math.hypot(pointer.x - trailPoint.x, pointer.y - trailPoint.y) > 1.1)) {
+      if (pointer.active && (!trailPoint || Math.hypot(pointer.x - trailPoint.x, pointer.y - trailPoint.y) > 0.7)) {
         trailPoints.push({ x: pointer.x, y: pointer.y, at: time })
       }
-      const trailLifetime = targetRef ? 1750 : 620
-      trailPoints = trailPoints.filter(point => time - point.at < trailLifetime).slice(-18)
+      const trailLifetime = targetRef ? 4200 : 950
+      trailPoints = trailPoints.filter(point => time - point.at < trailLifetime).slice(-MAX_TRAIL_POINTS)
       drawCursorTail(context, trailPoints, time, visual, targetRef ? 6 : 2, trailLifetime)
       const alive: Particle[] = []
       for (const particle of particles) {
@@ -245,7 +246,7 @@ function drawCursorTail(
   const fade = Math.max(0, 1 - (time - newest.at) / lifetime)
   const color = visual.color
   const palette = visual.palette
-  drawSmokeRibbon(context, visible, time, color, fade, minimumPoints)
+  drawSmokeRibbon(context, visible, time, visual, fade, minimumPoints, lifetime)
   const gradient = context.createLinearGradient(newest.x, newest.y, oldest.x, oldest.y)
   gradient.addColorStop(0, rgba(palette[0] ?? color, 0.82))
   gradient.addColorStop(0.28, rgba(palette[1] ?? color, 0.48))
@@ -257,25 +258,21 @@ function drawCursorTail(
   context.lineCap = 'round'
   context.lineJoin = 'round'
   context.shadowColor = color
-  context.shadowBlur = visual.family === 'mist' ? 13 : 9
+  context.shadowBlur = visual.family === 'mist' ? 20 : 15
 
+  // A soft outer plume gives each cosmetic a readable smoke wake while the
+  // narrower gradient core keeps its palette distinct from other trails.
+  context.strokeStyle = rgba(palette[1] ?? color, 0.14)
+  context.lineWidth = visual.family === 'streak' || visual.family === 'electric' ? 7 : 12
+  context.shadowBlur = 22
+  traceTrailPath(context, visible, time, visual.family)
+  context.stroke()
+
+  context.strokeStyle = gradient
+  context.lineWidth = visual.family === 'streak' || visual.family === 'electric' ? 2.8 : 4.6
+  context.shadowBlur = visual.family === 'mist' ? 16 : 11
   if (visual.family === 'digital') context.setLineDash([3, 3])
-  context.beginPath()
-  context.moveTo(newest.x, newest.y)
-  for (let index = visible.length - 1; index > 0; index--) {
-    const current = visible[index]
-    const previous = visible[index - 1]
-    const middleX = (current.x + previous.x) / 2
-    const middleY = (current.y + previous.y) / 2
-    if (visual.family === 'electric') {
-      const jitter = Math.sin(time * .045 + index * 2.3) * 3
-      context.lineTo(current.x + jitter, current.y - jitter * .45)
-      context.lineTo(middleX, middleY)
-    } else {
-      context.quadraticCurveTo(current.x, current.y, middleX, middleY)
-    }
-  }
-  context.lineTo(oldest.x, oldest.y)
+  traceTrailPath(context, visible, time, visual.family)
   context.stroke()
 
   // A fine luminous core makes icy, cosmic and plasma trails read as layered ribbons.
@@ -299,23 +296,55 @@ function drawCursorTail(
   context.globalAlpha = 1
 }
 
-function drawSmokeRibbon(context: CanvasRenderingContext2D, points: TrailPoint[], time: number, color: string, fade: number, minimumPoints: number) {
-  const ribbon = points.slice(-Math.max(minimumPoints, 8))
+function traceTrailPath(context: CanvasRenderingContext2D, points: TrailPoint[], time: number, family: EffectFamily) {
+  const newest = points[points.length - 1]
+  const oldest = points[0]
+  context.beginPath()
+  context.moveTo(newest.x, newest.y)
+  for (let index = points.length - 1; index > 0; index--) {
+    const current = points[index]
+    const previous = points[index - 1]
+    const middleX = (current.x + previous.x) / 2
+    const middleY = (current.y + previous.y) / 2
+    if (family === 'electric') {
+      const jitter = Math.sin(time * .045 + index * 2.3) * 3
+      context.lineTo(current.x + jitter, current.y - jitter * .45)
+      context.lineTo(middleX, middleY)
+    } else {
+      context.quadraticCurveTo(current.x, current.y, middleX, middleY)
+    }
+  }
+  context.lineTo(oldest.x, oldest.y)
+}
+
+function drawSmokeRibbon(
+  context: CanvasRenderingContext2D,
+  points: TrailPoint[],
+  time: number,
+  visual: ReturnType<typeof getEffectVisual>,
+  fade: number,
+  minimumPoints: number,
+  lifetime: number,
+) {
+  const ribbon = points.slice(-Math.max(minimumPoints, 20))
   if (ribbon.length < 2) return
   context.save()
   context.globalAlpha = fade
   for (let index = 0; index < ribbon.length - 1; index++) {
     const point = ribbon[index]
     const distanceFromHead = (ribbon.length - 1 - index) / Math.max(1, ribbon.length - 1)
-    const radius = 5 + distanceFromHead * 8
-    const drift = Math.sin(time * .0017 + index * 1.7) * (1 + distanceFromHead * 2)
+    const radius = 4 + distanceFromHead * 11
+    const age = Math.max(0, time - point.at)
+    const ageFade = Math.max(0, 1 - age / lifetime)
+    const drift = Math.sin(time * .0017 + index * 1.7) * (1 + distanceFromHead * 3)
     const x = point.x + drift
-    const y = point.y - distanceFromHead * 2
-    const opacity = (visualSmokeOpacity(color) + (1 - distanceFromHead) * .05) * (1 - distanceFromHead * .28)
+    const y = point.y - distanceFromHead * 3
+    const opacity = (visualSmokeOpacity(visual.color) + (1 - distanceFromHead) * .09) * ageFade * (1 - distanceFromHead * .3)
     const puff = context.createRadialGradient(x, y, 0, x, y, radius)
-    puff.addColorStop(0, rgba(color, opacity))
-    puff.addColorStop(.42, rgba(color, opacity * .38))
-    puff.addColorStop(1, rgba(color, 0))
+    puff.addColorStop(0, rgba(visual.palette[0] ?? visual.color, opacity))
+    puff.addColorStop(.42, rgba(visual.palette[1] ?? visual.color, opacity * .48))
+    puff.addColorStop(.76, rgba(visual.color, opacity * .16))
+    puff.addColorStop(1, rgba(visual.color, 0))
     context.fillStyle = puff
     context.beginPath()
     context.arc(x, y, radius, 0, Math.PI * 2)

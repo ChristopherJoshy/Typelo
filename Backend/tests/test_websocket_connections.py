@@ -60,6 +60,25 @@ class ConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await asyncio.gather(first, second), [True, True])
         self.assertEqual(overlapped, [])
 
+    async def test_result_is_replayed_until_client_acknowledges_it(self):
+        manager = ConnectionManager()
+        result = {
+            "type": "GAME_END",
+            "result": {"match_id": "match-123", "your_wpm": 42},
+        }
+        self.assertFalse(await manager.send_json("user", result))
+        self.assertIn("user", manager._pending_results)
+
+        socket = AsyncMock()
+        with patch.object(manager, "start_periodic_broadcast"):
+            await manager.connect(socket, "user", "User", None, 1000, "1.2.3.4")
+
+        socket.send_json.assert_awaited_once_with(result)
+        self.assertIn("user", manager._pending_results)
+        self.assertFalse(manager.acknowledge_game_end("user", "different-match"))
+        self.assertTrue(manager.acknowledge_game_end("user", "match-123"))
+        self.assertNotIn("user", manager._pending_results)
+
 
 if __name__ == '__main__':
     unittest.main()
