@@ -1675,3 +1675,649 @@ body,
 @keyframes trail-wake { 0%,100%{opacity:.6} 50%{opacity:1} }
 .authored-trail-preview[data-active="false"] * { animation:none !important; }
 @media(prefers-reduced-motion:reduce) { .authored-trail-preview * { animation:none !important; } }
+
+/* ==========================================================================
+   Profile scenes — full-card atmospheric art with one focal illustration.
+   Every animation is transform/opacity only and pauses outside the viewport.
+   ========================================================================== */
+
+.typelo-profile-effect-frame.ps-scene::before,
+.typelo-profile-effect-frame.ps-scene::after { content: none; display: none; animation: none; }
+
+.ps-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  isolation: isolate;
+  color: var(--ps-primary);
+  contain: layout paint style;
+}
+
+.ps-scene > * { position: absolute; }
+
+.ps-wash {
+  inset: -8%;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 62% 58% at var(--ps-glow-x) var(--ps-glow-y), color-mix(in srgb, var(--ps-primary) 34%, transparent), transparent 68%),
+    radial-gradient(ellipse 72% 62% at calc(100% - var(--ps-glow-x)) calc(100% - var(--ps-glow-y)), color-mix(in srgb, var(--ps-secondary) 22%, transparent), transparent 72%),
+    linear-gradient(154deg, color-mix(in srgb, var(--ps-primary) 12%, transparent), transparent 44%, color-mix(in srgb, var(--ps-secondary) 12%, transparent));
+  opacity: .82;
+}
+.ps-scene[data-place="center"] .ps-wash { opacity: .52; }
+
+.ps-field-art {
+  inset: -2%;
+  z-index: 1;
+  width: 104%;
+  height: 104%;
+  display: block;
+  opacity: .46;
+  mix-blend-mode: screen;
+  filter: saturate(1.08);
+}
+
+.ps-hero {
+  z-index: 2;
+  height: clamp(92px, 42%, 186px);
+  min-height: 68px;
+  max-height: 50%;
+  aspect-ratio: 1;
+  transform-origin: 50% 50%;
+  opacity: .92;
+  filter: drop-shadow(0 12px 26px color-mix(in srgb, var(--ps-deep) 52%, transparent)) saturate(1.06);
+}
+.ps-hero-aura {
+  position: absolute;
+  inset: -26%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--ps-primary) 30%, transparent), transparent 58%),
+    conic-gradient(from var(--ps-frame-angle, 0deg), transparent, color-mix(in srgb, var(--ps-secondary) 22%, transparent), transparent 38%, color-mix(in srgb, var(--ps-highlight) 18%, transparent), transparent 72%);
+  opacity: .8;
+  filter: blur(2px);
+}
+.ps-hero-art {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform-origin: 50% 50%;
+  animation-duration: var(--ps-motion-duration, 5s);
+  animation-delay: var(--ps-hero-delay, 0s);
+  animation-iteration-count: infinite;
+  animation-timing-function: cubic-bezier(.42,0,.28,1);
+  animation-play-state: paused;
+  will-change: transform, opacity;
+}
+.ps-hero-sheen { pointer-events: none; }
+.ps-sheen-bar {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: ps-sheen-sweep 7.4s cubic-bezier(.4,0,.2,1) infinite;
+  animation-delay: var(--ps-sheen-delay, 0s);
+  animation-play-state: paused;
+  opacity: .75;
+}
+.ps-scene[data-live="true"] .ps-sheen-bar { animation-play-state: running; }
+.ps-hero-aura {
+  animation: ps-aura-spin 34s linear infinite;
+  animation-delay: var(--ps-hero-delay, 0s);
+  animation-play-state: paused;
+}
+.ps-scene[data-live="true"] .ps-hero-aura { animation-play-state: running; }
+.ps-field-art {
+  animation: ps-field-breathe 23s ease-in-out infinite alternate;
+  animation-play-state: paused;
+  transform-origin: 50% 55%;
+}
+.ps-scene[data-live="true"] .ps-field-art { animation-play-state: running; }
+.ps-scene[data-live="true"][data-motion="storm"] .ps-field-art { animation: ps-field-storm 1.6s ease-in-out infinite; }
+.ps-scene[data-live="true"][data-motion="galaxy"] .ps-field-art { animation: ps-field-orbit 36s ease-in-out infinite alternate; }
+.ps-scene[data-live="true"][data-motion="rift"] .ps-field-art { animation: ps-field-rift 5.2s ease-in-out infinite; }
+.ps-scene[data-live="true"][data-motion="glitch"] .ps-field-art { animation: ps-field-glitch 3.2s steps(5, end) infinite; }
+.ps-scene[data-live="true"][data-motion="surge"] .ps-field-art { animation: ps-field-surge 5.6s ease-in-out infinite; }
+.ps-wash {
+  animation: ps-wash-breathe 15s ease-in-out infinite alternate;
+  animation-play-state: paused;
+  transform-origin: var(--ps-glow-x) var(--ps-glow-y);
+}
+.ps-scene[data-live="true"] .ps-wash { animation-play-state: running; }
+.ps-hero-tr { top: -9%; right: -13%; }
+.ps-hero-tl { top: -9%; left: -13%; }
+.ps-hero-br { bottom: -11%; right: -13%; }
+.ps-hero-bl { bottom: -11%; left: -13%; }
+.ps-hero-top {
+  top: -15%;
+  left: 50%;
+  height: clamp(84px, 40%, 178px);
+  transform: translateX(-50%) rotate(var(--ps-tilt, 0deg));
+  opacity: .58;
+  -webkit-mask-image: linear-gradient(#000 46%, transparent 92%);
+  mask-image: linear-gradient(#000 46%, transparent 92%);
+}
+.ps-hero-center {
+  top: 50%;
+  left: 50%;
+  height: clamp(132px, 48%, 240px);
+  transform: translate(-50%, -50%) rotate(var(--ps-tilt, 0deg));
+  opacity: .17;
+  filter: drop-shadow(0 10px 24px color-mix(in srgb, var(--ps-deep) 36%, transparent)) saturate(.88);
+}
+.ps-hero-center-echo {
+  top: 50%;
+  z-index: 1;
+  height: clamp(96px, 38%, 176px);
+  transform: translateY(-50%);
+  opacity: .16;
+  filter: blur(.25px) saturate(.78);
+}
+.ps-hero-center-echo-l {
+  left: -22%;
+  -webkit-mask-image: linear-gradient(90deg, #000 30%, transparent 92%);
+  mask-image: linear-gradient(90deg, #000 30%, transparent 92%);
+}
+.ps-hero-center-echo-r {
+  right: -22%;
+  -webkit-mask-image: linear-gradient(270deg, #000 30%, transparent 92%);
+  mask-image: linear-gradient(270deg, #000 30%, transparent 92%);
+}
+.ps-hero-side-l,
+.ps-hero-side-r {
+  top: 53%;
+  height: clamp(120px, 52%, 218px);
+  transform: translateY(-50%);
+  opacity: .9;
+}
+.ps-hero-side-l {
+  left: -19%;
+  -webkit-mask-image: linear-gradient(90deg, #000 48%, transparent 88%);
+  mask-image: linear-gradient(90deg, #000 48%, transparent 88%);
+}
+.ps-hero-side-r {
+  right: -19%;
+  -webkit-mask-image: linear-gradient(270deg, #000 48%, transparent 88%);
+  mask-image: linear-gradient(270deg, #000 48%, transparent 88%);
+}
+.ps-hero-twin { height: clamp(64px, 32%, 132px); opacity: .84; }
+.ps-hero-twin-a { top: -8%; left: -10%; }
+.ps-hero-twin-b { bottom: -9%; right: -10%; }
+.ps-hero-twin-b .ps-hero-art { scale: -1 1; }
+
+.ps-light {
+  inset: 0;
+  z-index: 3;
+  background:
+    radial-gradient(ellipse 46% 38% at 18% 8%, rgba(255,255,255,.14), transparent 62%),
+    radial-gradient(ellipse 52% 44% at 88% 96%, rgba(0,0,0,.3), transparent 66%);
+  mix-blend-mode: soft-light;
+  opacity: .9;
+}
+
+/* A soft central shade keeps profile copy readable over painted scenes. */
+.ps-scrim {
+  inset: 0;
+  z-index: 3;
+  background:
+    radial-gradient(ellipse 60% 38% at 50% 22%, rgba(5,4,10,.3), transparent 74%),
+    linear-gradient(180deg, rgba(5,4,10,.14), transparent 26%);
+}
+.ps-scene[data-place="center"] .ps-scrim {
+  background: radial-gradient(ellipse 54% 48% at 50% 50%, rgba(5,4,10,.38), rgba(5,4,10,.2) 58%, transparent 84%);
+}
+.ps-grain {
+  inset: 0;
+  z-index: 4;
+  opacity: .14;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+
+.ps-ambient { inset: 0; z-index: 3; overflow: hidden; }
+.ps-particle {
+  position: absolute;
+  display: block;
+  width: var(--ps-width, 3px);
+  height: var(--ps-height, 3px);
+  background: var(--ps-color, currentColor);
+  color: var(--ps-color, currentColor);
+  opacity: var(--ps-opacity, .6);
+  animation-duration: var(--ps-duration, 7s);
+  animation-delay: var(--ps-delay, 0s);
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+  animation-play-state: paused;
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+.ps-scene[data-live="true"] .ps-particle { animation-play-state: running; }
+.ps-particle-stars, .ps-particle-snow {
+  clip-path: polygon(50% 0, 59% 41%, 100% 50%, 59% 59%, 50% 100%, 41% 59%, 0 50%, 41% 41%);
+}
+.ps-particle-motes, .ps-particle-pollen, .ps-particle-dust {
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--ps-color);
+}
+.ps-particle-petals { border-radius: 72% 0 72% 0; }
+.ps-particle-bubbles {
+  border: 1px solid var(--ps-color);
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.62), transparent 44%);
+}
+.ps-particle-embers {
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 18%, var(--ps-color) 46%, transparent 72%);
+  box-shadow: 0 0 7px var(--ps-color);
+}
+.ps-particle-shards { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.ps-particle-data { border-radius: 1px; }
+.ps-particle-confetti { border-radius: 1px; }
+.ps-particle-notes {
+  width: auto;
+  height: auto;
+  background: none;
+  font-style: normal;
+  font-size: calc(var(--ps-size, 3px) * 3.4);
+  line-height: 1;
+  text-shadow: 0 0 6px var(--ps-color);
+}
+.ps-scene[data-ambient="stars"] .ps-particle, .ps-scene[data-ambient="snow"] .ps-particle { animation-name: ps-part-twinkle; }
+.ps-scene[data-ambient="motes"] .ps-particle, .ps-scene[data-ambient="pollen"] .ps-particle, .ps-scene[data-ambient="dust"] .ps-particle { animation-name: ps-part-drift; }
+.ps-scene[data-ambient="petals"] .ps-particle, .ps-scene[data-ambient="confetti"] .ps-particle { animation-name: ps-part-fall; }
+.ps-scene[data-ambient="bubbles"] .ps-particle, .ps-scene[data-ambient="embers"] .ps-particle { animation-name: ps-part-rise; }
+.ps-scene[data-ambient="shards"] .ps-particle { animation-name: ps-part-glint; }
+.ps-scene[data-ambient="data"] .ps-particle { animation-name: ps-part-data; animation-timing-function: steps(6, end); }
+.ps-scene[data-ambient="notes"] .ps-particle { animation-name: ps-part-float; }
+
+.ps-vignette {
+  inset: 0;
+  z-index: 4;
+  background: radial-gradient(ellipse 58% 52% at 50% 45%, transparent 18%, rgba(0,0,0,.1) 62%, rgba(0,0,0,.32) 100%);
+  opacity: .7;
+}
+
+/* Frame --------------------------------------------------------------- */
+@property --ps-frame-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 0deg;
+}
+.ps-frame {
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.ps-scene[data-live="true"] .ps-frame { animation: ps-frame-turn 32s linear infinite; }
+.ps-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 1.4px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--ps-frame-angle, 0deg), transparent 0 7%, var(--ps-primary) 16%, var(--ps-highlight) 28%, transparent 40%, var(--ps-secondary) 60%, var(--ps-highlight) 71%, transparent 84%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: .82;
+}
+.ps-frame-light {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 1.4px;
+  border-radius: inherit;
+  background: linear-gradient(108deg, transparent 32%, rgba(255,255,255,.72) 48%, transparent 64%);
+  background-size: 260% 100%;
+  background-position: 120% 0;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: .62;
+  animation: ps-frame-sweep 7.5s linear infinite;
+  animation-play-state: paused;
+}
+.ps-scene[data-live="true"] .ps-frame-light { animation-play-state: running; }
+.ps-frame-glow { box-shadow: inset 0 0 22px color-mix(in srgb, var(--ps-primary) 14%, transparent), inset 0 0 3px color-mix(in srgb, var(--ps-primary) 32%, transparent); }
+.ps-frame-glow::before { opacity: .95; }
+.ps-frame-double::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px solid color-mix(in srgb, var(--ps-secondary) 48%, transparent);
+  border-radius: inherit;
+  opacity: .6;
+}
+.ps-frame-dashed::before {
+  background: none;
+  -webkit-mask: none;
+  mask: none;
+  border: 1.5px dashed color-mix(in srgb, var(--ps-primary) 72%, transparent);
+}
+.ps-frame-dashed::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 1px dashed color-mix(in srgb, var(--ps-highlight) 34%, transparent);
+  border-radius: inherit;
+  opacity: .55;
+}
+.ps-frame-segmented::before {
+  background: repeating-conic-gradient(from var(--ps-frame-angle, 0deg), var(--ps-primary) 0 4.5deg, color-mix(in srgb, var(--ps-highlight) 82%, #fff) 4.5deg 6deg, transparent 6deg 15deg);
+  opacity: .95;
+}
+.ps-frame-runes::before { opacity: .78; }
+.ps-frame-thread::before {
+  background: none;
+  -webkit-mask: none;
+  mask: none;
+  border: 1px solid color-mix(in srgb, var(--ps-primary) 42%, transparent);
+  inset: 5px;
+  padding: 0;
+  opacity: .68;
+}
+.ps-frame-thread .ps-frame-light { opacity: .38; }
+.ps-frame-aurora::before {
+  padding: 2.6px;
+  filter: blur(1.2px) saturate(1.35);
+  opacity: .95;
+}
+.ps-frame-aurora { box-shadow: inset 0 0 26px color-mix(in srgb, var(--ps-secondary) 12%, transparent); }
+.ps-frame-none::before, .ps-frame-none .ps-frame-light { display: none; }
+.ps-frame.is-rainbow::before {
+  background: conic-gradient(from var(--ps-frame-angle, 0deg), #fb7185, #fbbf24, #34d399, #38bdf8, #a78bfa, #f472b6, #fb7185);
+}
+.ps-frame-tick { display: none; }
+.ps-frame-runes .ps-frame-tick {
+  display: block;
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  background: var(--ps-highlight);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--ps-primary) 80%, transparent);
+  opacity: .85;
+  transform: rotate(45deg);
+}
+.ps-frame-runes .ps-frame-tick:nth-child(1) { top: 6px; left: 18%; }
+.ps-frame-runes .ps-frame-tick:nth-child(2) { top: 6px; left: 44%; }
+.ps-frame-runes .ps-frame-tick:nth-child(3) { top: 6px; left: 70%; }
+.ps-frame-runes .ps-frame-tick:nth-child(4) { right: 6px; top: 52%; }
+.ps-frame-runes .ps-frame-tick:nth-child(5) { bottom: 6px; left: 70%; }
+.ps-frame-runes .ps-frame-tick:nth-child(6) { bottom: 6px; left: 44%; }
+.ps-frame-runes .ps-frame-tick:nth-child(7) { bottom: 6px; left: 18%; }
+.ps-frame-runes .ps-frame-tick:nth-child(8) { left: 6px; top: 52%; }
+.ps-frame-thread .ps-frame-tick {
+  display: block;
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-left: 1.5px solid var(--ps-highlight);
+  border-top: 1.5px solid var(--ps-highlight);
+  opacity: .66;
+}
+.ps-frame-thread .ps-frame-tick:nth-child(1) { top: 5px; left: 5px; }
+.ps-frame-thread .ps-frame-tick:nth-child(2) { top: 5px; right: 5px; rotate: 90deg; }
+.ps-frame-thread .ps-frame-tick:nth-child(3) { bottom: 5px; right: 5px; rotate: 180deg; }
+.ps-frame-thread .ps-frame-tick:nth-child(4) { bottom: 5px; left: 5px; rotate: 270deg; }
+.ps-frame-runes .ps-frame-tick,
+.ps-frame-thread .ps-frame-tick {
+  animation: ps-frame-glyph 3.8s ease-in-out infinite paused;
+}
+.ps-frame-runes .ps-frame-tick:nth-child(even),
+.ps-frame-thread .ps-frame-tick:nth-child(even) { animation-delay: -1.9s; }
+.ps-scene[data-live="true"] .ps-frame-runes .ps-frame-tick,
+.ps-scene[data-live="true"] .ps-frame-thread .ps-frame-tick { animation-play-state: running; }
+
+/* Hero motion --------------------------------------------------------- */
+.ps-scene[data-live="true"] .ps-hero-art { animation-play-state: running; }
+.ps-scene[data-live="true"][data-motion="float"] .ps-hero-art { animation-name: ps-motion-float; }
+.ps-scene[data-live="true"][data-motion="orbit"] .ps-hero-art { animation-name: ps-motion-orbit; }
+.ps-scene[data-live="true"][data-motion="pulse"] .ps-hero-art { animation-name: ps-motion-pulse; }
+.ps-scene[data-live="true"][data-motion="sway"] .ps-hero-art { animation-name: ps-motion-sway; }
+.ps-scene[data-live="true"][data-motion="shimmer"] .ps-hero-art { animation-name: ps-motion-shimmer; }
+.ps-scene[data-live="true"][data-motion="flicker"] .ps-hero-art { animation-name: ps-motion-flicker; animation-timing-function: steps(2, end); }
+.ps-scene[data-live="true"][data-motion="surge"] .ps-hero-art { animation-name: ps-motion-surge; }
+.ps-scene[data-live="true"][data-motion="drift"] .ps-hero-art { animation-name: ps-motion-drift; }
+.ps-scene[data-live="true"][data-motion="breathe"] .ps-hero-art { animation-name: ps-motion-breathe; }
+.ps-scene[data-live="true"][data-motion="spin"] .ps-hero-art { animation-name: ps-motion-spin; animation-timing-function: linear; }
+.ps-scene[data-live="true"][data-motion="rise"] .ps-hero-art { animation-name: ps-motion-rise; }
+.ps-scene[data-live="true"][data-motion="flow"] .ps-hero-art { animation-name: ps-motion-flow; }
+.ps-scene[data-live="true"][data-motion="twinkle"] .ps-hero-art { animation-name: ps-motion-twinkle; }
+.ps-scene[data-live="true"][data-motion="glitch"] .ps-hero-art { animation-name: ps-motion-glitch; animation-timing-function: steps(3, end); }
+.ps-scene[data-live="true"][data-motion="hover"] .ps-hero-art { animation-name: ps-motion-hover; }
+.ps-scene[data-live="true"][data-motion="storm"] .ps-hero-art { animation-name: ps-motion-storm; animation-timing-function: steps(4, end); }
+.ps-scene[data-live="true"][data-motion="halo"] .ps-hero-art { animation-name: ps-motion-halo; }
+.ps-scene[data-live="true"][data-motion="galaxy"] .ps-hero-art { animation-name: ps-motion-galaxy; animation-timing-function: linear; }
+.ps-scene[data-live="true"][data-motion="rift"] .ps-hero-art { animation-name: ps-motion-rift; animation-timing-function: steps(5, end); }
+.ps-scene[data-live="true"][data-motion="freeze"] .ps-hero-art { animation-name: ps-motion-freeze; }
+.ps-scene[data-live="true"][data-motion="bounce"] .ps-hero-art { animation-name: ps-motion-bounce; animation-timing-function: cubic-bezier(.3,0,.2,1); }
+.ps-scene[data-live="true"][data-motion="slash"] .ps-hero-art { animation-name: ps-motion-slash; animation-timing-function: cubic-bezier(.2,.8,.3,1); }
+.ps-scene[data-live="true"][data-motion="pulse"] .ps-hero-aura,
+.ps-scene[data-live="true"][data-motion="breathe"] .ps-hero-aura,
+.ps-scene[data-live="true"][data-motion="halo"] .ps-hero-aura { animation: ps-aura-pulse var(--ps-motion-duration, 5s) ease-in-out infinite; }
+.ps-scene[data-live="true"][data-motion="surge"] .ps-hero-aura,
+.ps-scene[data-live="true"][data-motion="rift"] .ps-hero-aura { animation: ps-aura-pulse var(--ps-motion-fast, 4s) cubic-bezier(.4,0,.2,1) infinite; }
+.ps-scene[data-live="true"][data-motion="storm"] .ps-hero-aura { animation: ps-aura-flash 1.6s steps(3, end) infinite; }
+
+/* Small illustrated flourishes inside each hero. */
+.ps-scene .art-spin-slow { animation: ps-art-spin 22s linear infinite paused; transform-box: view-box; transform-origin: 50px 50px; }
+.ps-scene .art-spin-reverse { animation: ps-art-spin 16s linear infinite reverse paused; transform-box: view-box; transform-origin: 50px 50px; }
+.ps-scene .art-pulse-soft { animation: ps-art-pulse 4.2s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-twinkle { animation: ps-art-twinkle 2.8s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-twinkle-delay { animation: ps-art-twinkle 3.6s ease-in-out -.9s infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-drift-slow { animation: ps-art-drift 8s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-sway-soft { animation: ps-art-sway 5.4s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-sway-soft-delay { animation: ps-art-sway 6.4s ease-in-out -1.4s infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-flap-left { animation: ps-art-flap-left 4.4s ease-in-out infinite paused; transform-box: fill-box; transform-origin: right center; }
+.ps-scene .art-flap-right { animation: ps-art-flap-right 4.4s ease-in-out infinite paused; transform-box: fill-box; transform-origin: left center; }
+.ps-scene .art-breathe-soft { animation: ps-art-breathe 5.6s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-dash-flow { animation: ps-art-dash 3.4s linear infinite paused; }
+.ps-scene .art-hover-soft { animation: ps-art-hover 6s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-flicker-soft { animation: ps-art-flicker 1.9s steps(3, end) infinite paused; }
+.ps-scene .art-rise-soft { animation: ps-art-rise 4.2s ease-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-flow-soft { animation: ps-art-flow 7s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-swim-soft { animation: ps-art-swim 6.5s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-float-soft { animation: ps-art-float 5s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-blink-soft { animation: ps-art-blink 5.2s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-halo-soft { animation: ps-art-halo 6.6s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-heartbeat { animation: ps-art-heartbeat 2s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-tentacle-soft { animation: ps-art-tentacle 4.6s ease-in-out infinite paused; transform-box: fill-box; transform-origin: top center; }
+.ps-scene .art-glitch-soft { animation: ps-art-glitch 2.8s steps(4, end) infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-scan-soft { animation: ps-art-scan 3.2s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-flutter-soft { animation: ps-art-flutter 4.8s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-punch-soft { animation: ps-art-punch 3.4s ease-in-out infinite paused; transform-box: fill-box; transform-origin: center; }
+.ps-scene .art-rain-soft { animation: ps-art-rain 2.2s linear infinite paused; }
+.ps-scene[data-live="true"] .art-spin-slow,
+.ps-scene[data-live="true"] .art-spin-reverse,
+.ps-scene[data-live="true"] .art-pulse-soft,
+.ps-scene[data-live="true"] .art-twinkle,
+.ps-scene[data-live="true"] .art-twinkle-delay,
+.ps-scene[data-live="true"] .art-drift-slow,
+.ps-scene[data-live="true"] .art-sway-soft,
+.ps-scene[data-live="true"] .art-sway-soft-delay,
+.ps-scene[data-live="true"] .art-flap-left,
+.ps-scene[data-live="true"] .art-flap-right,
+.ps-scene[data-live="true"] .art-breathe-soft,
+.ps-scene[data-live="true"] .art-dash-flow,
+.ps-scene[data-live="true"] .art-hover-soft,
+.ps-scene[data-live="true"] .art-flicker-soft,
+.ps-scene[data-live="true"] .art-rise-soft,
+.ps-scene[data-live="true"] .art-flow-soft,
+.ps-scene[data-live="true"] .art-swim-soft,
+.ps-scene[data-live="true"] .art-float-soft,
+.ps-scene[data-live="true"] .art-blink-soft,
+.ps-scene[data-live="true"] .art-halo-soft,
+.ps-scene[data-live="true"] .art-heartbeat,
+.ps-scene[data-live="true"] .art-tentacle-soft,
+.ps-scene[data-live="true"] .art-glitch-soft,
+.ps-scene[data-live="true"] .art-scan-soft,
+.ps-scene[data-live="true"] .art-flutter-soft,
+.ps-scene[data-live="true"] .art-punch-soft,
+.ps-scene[data-live="true"] .art-rain-soft { animation-play-state: running; }
+
+/* Silhouette copies exist only to mask the moving highlight; keep them still. */
+.ps-scene .ps-static-mask * { animation: none !important; }
+
+@keyframes ps-frame-sweep { 0% { background-position: 120% 0; } 55%, 100% { background-position: -40% 0; } }
+@keyframes ps-sheen-sweep { 0% { transform: translateX(0); } 58%, 100% { transform: translateX(172px); } }
+@keyframes ps-aura-spin { to { rotate: 360deg; } }
+@keyframes ps-frame-glyph { 0%, 100% { opacity: .48; scale: .78; } 50% { opacity: 1; scale: 1.2; } }
+@keyframes ps-field-breathe { 0% { transform: scale(1.01) translate3d(0, 0, 0); } 100% { transform: scale(1.055) translate3d(0, -1.2%, 0); } }
+@keyframes ps-field-storm { 0%, 100% { transform: translate(0, 0); opacity: .42; } 35% { transform: translate(.25%, -.2%); opacity: .62; } 42% { transform: translate(-.3%, .15%); opacity: .78; } 52% { opacity: .48; } }
+@keyframes ps-field-orbit { 0% { transform: scale(1.01) rotate(-.65deg); } 100% { transform: scale(1.06) rotate(.65deg); } }
+@keyframes ps-field-rift { 0%, 100% { transform: scale(1.015); opacity: .42; } 45% { transform: scale(1.065); opacity: .7; } 72% { transform: scale(1.025); opacity: .5; } }
+@keyframes ps-field-glitch { 0%, 85%, 100% { transform: translate(0, 0); opacity: .46; } 87% { transform: translate(-.35%, .1%); opacity: .72; } 90% { transform: translate(.25%, -.15%); opacity: .58; } 93% { transform: translate(-.15%, 0); opacity: .76; } }
+@keyframes ps-field-surge { 0%, 100% { transform: scale(1.01); opacity: .4; } 45% { transform: scale(1.075); opacity: .64; } 55% { transform: scale(1.055); opacity: .52; } }
+@keyframes ps-wash-breathe { 0% { opacity: .74; transform: scale(1); } 100% { opacity: .92; transform: scale(1.035); } }
+@keyframes ps-frame-turn { to { --ps-frame-angle: 360deg; } }
+@keyframes ps-part-twinkle { 0%, 100% { opacity: var(--ps-fade-opacity, .2); transform: scale(.55); } 50% { opacity: var(--ps-opacity, .6); transform: scale(1.18); } }
+@keyframes ps-part-drift { 0%, 100% { transform: translate(0, 0); opacity: var(--ps-dim-opacity, .3); } 50% { transform: translate(var(--ps-drift, 10px), var(--ps-drift-y, -7px)); opacity: var(--ps-opacity, .6); } }
+@keyframes ps-part-fall { 0% { transform: translate(0, -18px) rotate(0deg); opacity: 0; } 14% { opacity: var(--ps-opacity, .6); } 86% { opacity: var(--ps-opacity, .6); } 100% { transform: translate(var(--ps-drift, 10px), 26px) rotate(150deg); opacity: 0; } }
+@keyframes ps-part-rise { 0% { transform: translate(0, 18px) scale(.8); opacity: 0; } 18% { opacity: var(--ps-opacity, .6); } 82% { opacity: var(--ps-opacity, .6); } 100% { transform: translate(var(--ps-drift, 10px), -26px) scale(1.06); opacity: 0; } }
+@keyframes ps-part-glint { 0%, 100% { transform: scale(.55) rotate(0deg); opacity: var(--ps-fade-opacity, .2); } 48% { transform: scale(1.2) rotate(80deg); opacity: var(--ps-opacity, .6); } }
+@keyframes ps-part-data { 0% { transform: translateY(-24px); opacity: 0; } 20%, 80% { opacity: var(--ps-data-opacity, .5); } 100% { transform: translateY(28px); opacity: 0; } }
+@keyframes ps-part-float { 0%, 100% { transform: translate(0, 0) rotate(-6deg); opacity: var(--ps-dim-opacity, .3); } 50% { transform: translate(var(--ps-drift, 10px), -9px) rotate(6deg); opacity: var(--ps-opacity, .6); } }
+@keyframes ps-aura-pulse { 0%, 100% { opacity: .58; transform: scale(.94); } 50% { opacity: .95; transform: scale(1.06); } }
+@keyframes ps-motion-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-3.2%) rotate(1deg); } }
+@keyframes ps-motion-orbit { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 25% { transform: translate(2.1%, -2.3%) rotate(2deg); } 50% { transform: translate(.6%, -1%) rotate(0deg); } 75% { transform: translate(-2.1%, -1.9%) rotate(-2deg); } }
+@keyframes ps-motion-pulse { 0%, 100% { transform: scale(1); } 46% { transform: scale(1.055); } 58% { transform: scale(1.018); } }
+@keyframes ps-motion-sway { 0%, 100% { transform: rotate(-2.6deg) translateY(.4%); } 50% { transform: rotate(2.6deg) translateY(-.4%); } }
+@keyframes ps-motion-shimmer { 0%, 100% { transform: scale(1) rotate(0deg); opacity: .86; } 50% { transform: scale(1.025) rotate(.6deg); opacity: 1; } }
+@keyframes ps-motion-flicker { 0%, 100% { opacity: 1; } 35% { opacity: .62; } 62% { opacity: .9; } 74% { opacity: .52; } }
+@keyframes ps-motion-surge { 0%, 100% { transform: scale(.98); } 48% { transform: scale(1.08); } }
+@keyframes ps-motion-drift { 0%, 100% { transform: translate(-2.2%, 1.6%); } 50% { transform: translate(2.2%, -2.2%); } }
+@keyframes ps-motion-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+@keyframes ps-motion-spin { to { transform: rotate(360deg); } }
+@keyframes ps-motion-rise { 0%, 100% { transform: translateY(2.4%); opacity: .82; } 50% { transform: translateY(-3.5%); opacity: 1; } }
+@keyframes ps-motion-flow { 0%, 100% { transform: translateX(-2.8%); } 50% { transform: translateX(2.8%); } }
+@keyframes ps-motion-twinkle { 0%, 100% { opacity: .66; transform: scale(.97); } 50% { opacity: 1; transform: scale(1.03); } }
+@keyframes ps-motion-glitch { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-2px, 1px); } 40% { transform: translate(2px, -1px); } 60% { transform: translate(-1px, -1px); } 80% { transform: translate(1px, 1px); } }
+@keyframes ps-motion-hover { 0%, 100% { transform: translateY(.4%); } 50% { transform: translateY(-2.6%); } }
+@keyframes ps-motion-storm { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 20% { transform: translate(-3px, 1px) rotate(-1deg); } 40% { transform: translate(3px, -1px) rotate(1deg); } 60% { transform: translate(-2px, -2px) rotate(-.7deg); } 80% { transform: translate(2px, 1px) rotate(.7deg); } }
+@keyframes ps-motion-halo { 0%, 100% { transform: translateY(-1px) rotate(-1.2deg); } 50% { transform: translateY(2px) rotate(1.2deg); } }
+@keyframes ps-motion-galaxy { 0% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(180deg) scale(1.035); } 100% { transform: rotate(360deg) scale(1); } }
+@keyframes ps-motion-rift { 0%, 100% { transform: scale(1); opacity: .92; } 45% { transform: scale(1.045); opacity: 1; } 70% { transform: scale(1.012); opacity: .8; } }
+@keyframes ps-motion-freeze { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.018); } }
+@keyframes ps-motion-bounce { 0%, 100% { transform: translateY(0) scale(1); } 32% { transform: translateY(-4.5%) scale(1.025); } 52% { transform: translateY(0) scale(.99,1.015); } 70% { transform: translateY(-1.8%) scale(1.01); } 84% { transform: translateY(0) scale(1); } }
+@keyframes ps-motion-slash { 0%, 100% { transform: translate(-2.4%, 2.4%) rotate(-1deg); opacity: .68; } 45% { transform: translate(2.4%, -2.4%) rotate(1deg); opacity: 1; } }
+@keyframes ps-aura-flash { 0%, 100% { opacity: .48; transform: scale(.94); } 38% { opacity: .82; transform: scale(1.04); } 43% { opacity: .42; transform: scale(1); } 72% { opacity: .92; transform: scale(1.08); } }
+@keyframes ps-art-spin { to { transform: rotate(360deg); } }
+@keyframes ps-art-pulse { 0%, 100% { transform: scale(.96); opacity: .8; } 50% { transform: scale(1.05); opacity: 1; } }
+@keyframes ps-art-twinkle { 0%, 100% { transform: scale(.6); opacity: .35; } 50% { transform: scale(1.2); opacity: 1; } }
+@keyframes ps-art-drift { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(2px, -3px); } }
+@keyframes ps-art-sway { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2.4deg); } }
+@keyframes ps-art-flap-left { 0%, 100% { transform: rotate(1.5deg) scaleX(.98); } 50% { transform: rotate(-3deg) scaleX(1.02); } }
+@keyframes ps-art-flap-right { 0%, 100% { transform: rotate(-1.5deg) scaleX(.98); } 50% { transform: rotate(3deg) scaleX(1.02); } }
+@keyframes ps-art-breathe { 0%, 100% { transform: scale(.975); } 50% { transform: scale(1.025); } }
+@keyframes ps-art-dash { to { stroke-dashoffset: -24; } }
+@keyframes ps-art-hover { 0%, 100% { transform: translateY(1px); } 50% { transform: translateY(-2px); } }
+@keyframes ps-art-flicker { 0%, 100% { opacity: 1; } 40% { opacity: .72; } 70% { opacity: .92; } 84% { opacity: .6; } }
+@keyframes ps-art-rise { 0% { transform: translateY(4px); opacity: 0; } 25% { opacity: .9; } 100% { transform: translateY(-10px); opacity: 0; } }
+@keyframes ps-art-flow { 0%, 100% { transform: translateX(-2px); } 50% { transform: translateX(2px); } }
+@keyframes ps-art-swim { 0%, 100% { transform: translate(-2px, 1px) rotate(-1deg); } 50% { transform: translate(2px, -2px) rotate(1deg); } }
+@keyframes ps-art-float { 0%, 100% { transform: translateY(1px); } 50% { transform: translateY(-3px); } }
+@keyframes ps-art-blink { 0%, 42%, 48%, 100% { transform: scaleY(1); } 45% { transform: scaleY(.08); } }
+@keyframes ps-art-halo { 0%, 100% { transform: rotate(-1deg); } 50% { transform: rotate(1deg); } }
+@keyframes ps-art-heartbeat { 0%, 100% { transform: scale(1); } 12% { transform: scale(1.045); } 22% { transform: scale(1); } 32% { transform: scale(1.03); } 44% { transform: scale(1); } }
+@keyframes ps-art-tentacle { 0%, 100% { transform: skewX(-2deg); } 50% { transform: skewX(2deg); } }
+@keyframes ps-art-glitch { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-1px, 1px); } 50% { transform: translate(1px, -1px); } 75% { transform: translate(1px, 1px); } }
+@keyframes ps-art-scan { 0%, 100% { transform: translateY(-7px); opacity: .3; } 50% { transform: translateY(7px); opacity: .75; } }
+@keyframes ps-art-flutter { 0%, 100% { transform: scaleX(.97) rotate(-.5deg); } 50% { transform: scaleX(1.03) rotate(.5deg); } }
+@keyframes ps-art-punch { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 40% { transform: translate(2px, -2px) rotate(-1deg) scale(1.015); } }
+@keyframes ps-art-rain { 0% { transform: translateY(-4px); opacity: 0; } 20%, 80% { opacity: .7; } 100% { transform: translateY(8px); opacity: 0; } }
+
+/* ==========================================================================
+   Avatar surrounds — crest + constructed ring + side ornaments.
+   ========================================================================== */
+
+.authored-avatar-border.bf-frame { overflow: visible; color: var(--bf-primary); }
+.bf-svg { overflow: visible; display: block; }
+.bf-crest, .bf-side, .bf-ring-art, .bf-clasp, .bf-orbit-sparks, .bf-side-art {
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+}
+.bf-crest {
+  animation: bf-crest-breathe var(--bf-motion-duration, 6s) ease-in-out infinite paused;
+  animation-delay: var(--bf-motion-delay, 0s);
+}
+.bf-side-art {
+  animation: bf-side-float var(--bf-side-duration, 4.8s) ease-in-out infinite paused;
+  animation-delay: var(--bf-motion-delay, 0s);
+}
+.bf-clasp {
+  animation: bf-clasp-pulse var(--bf-clasp-duration, 3.7s) ease-in-out infinite paused;
+  animation-delay: var(--bf-motion-delay, 0s);
+}
+.bf-shine {
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+  animation: bf-shine 9.5s linear infinite paused;
+  animation-delay: var(--bf-motion-delay, 0s);
+  opacity: .72;
+}
+.bf-aura {
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+  animation: bf-aura calc(var(--bf-motion-duration, 6s) * 1.15) ease-in-out infinite paused;
+}
+.bf-frame[data-live="true"] .bf-crest,
+.bf-frame[data-live="true"] .bf-side-art,
+.bf-frame[data-live="true"] .bf-clasp,
+.bf-frame[data-live="true"] .bf-shine,
+.bf-frame[data-live="true"] .bf-aura { animation-play-state: running; }
+.bf-frame[data-motion="sway"] .bf-crest { animation-name: bf-crest-sway; }
+.bf-frame[data-motion="orbit"] .bf-crest { animation-name: bf-crest-orbit; }
+.bf-frame[data-motion="flicker"] .bf-crest { animation-name: bf-crest-flicker; animation-timing-function: steps(2, end); }
+.bf-frame[data-motion="spin"] .bf-crest { animation-name: bf-crest-spin; animation-timing-function: ease-in-out; }
+.bf-frame[data-motion="pulse"] .bf-crest { animation-name: bf-crest-pulse; }
+.bf-frame[data-motion="drift"] .bf-crest { animation-name: bf-crest-drift; }
+.bf-frame[data-motion="hover"] .bf-crest { animation-name: bf-crest-hover; }
+.bf-frame[data-motion="sway"] .bf-side-art { animation-name: bf-side-sway; }
+.bf-frame[data-motion="pulse"] .bf-side-art { animation-name: bf-side-pulse; }
+.bf-frame[data-motion="drift"] .bf-side-art { animation-name: bf-side-drift; }
+.bf-frame[data-motion="hover"] .bf-side-art { animation-name: bf-side-hover; }
+.bf-frame[data-motion="orbit"] .bf-side-art,
+.bf-frame[data-motion="spin"] .bf-side-art { animation-name: bf-side-orbit; }
+.bf-frame[data-motion="flicker"] .bf-side-art { animation-name: bf-side-flicker; animation-timing-function: steps(3, end); }
+.bf-frame[data-motion="pulse"] .bf-clasp { animation-name: bf-clasp-pulse; }
+.bf-frame[data-live="true"][data-motion="orbit"] .bf-orbit-sparks,
+.bf-frame[data-live="true"][data-motion="spin"] .bf-orbit-sparks { animation: bf-rotate 18s linear infinite; }
+.bf-frame[data-live="true"][data-ring="orbit"] .bf-ring-art { animation: bf-rotate 34s linear infinite; }
+.bf-frame[data-live="true"][data-ring="beaded"] .bf-ring-art { animation: bf-rotate 70s linear infinite; }
+.bf-frame[data-live="true"][data-ring="scalloped"] .bf-ring-art { animation: bf-rotate 90s linear infinite; }
+.bf-frame[data-live="true"][data-ring="dashed"] .bf-ring-art { animation: bf-dash 26s linear infinite; }
+.bf-frame[data-live="true"][data-ring="segmented"] .bf-ring-art { animation: bf-rotate 52s linear infinite reverse; }
+
+@keyframes bf-crest-breathe { 0%, 100% { transform: scale(.985) translateY(.4px); } 50% { transform: scale(1.035) translateY(-.8px); } }
+@keyframes bf-crest-sway { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+@keyframes bf-crest-orbit { 0%, 100% { transform: translateY(.4px) rotate(-1.6deg); } 50% { transform: translateY(-1px) rotate(1.6deg); } }
+@keyframes bf-crest-spin { 0%, 100% { transform: rotate(-3deg) scale(.98); } 50% { transform: rotate(3deg) scale(1.025); } }
+@keyframes bf-crest-flicker { 0%, 100% { opacity: 1; } 35% { opacity: .55; } 62% { opacity: .92; } 78% { opacity: .5; } }
+@keyframes bf-crest-pulse { 0%, 100% { transform: scale(.98); } 50% { transform: scale(1.06); } }
+@keyframes bf-crest-drift { 0%, 100% { transform: translateX(-.8px); } 50% { transform: translateX(.8px); } }
+@keyframes bf-crest-hover { 0%, 100% { transform: translateY(.6px); } 50% { transform: translateY(-1.2px); } }
+@keyframes bf-side-float { 0%, 100% { transform: translateY(1px); opacity: .8; } 50% { transform: translateY(-2px); opacity: 1; } }
+@keyframes bf-side-orbit { 0%, 100% { transform: translateY(1px) rotate(-2deg); } 50% { transform: translateY(-2px) rotate(2deg); } }
+@keyframes bf-side-sway { 0%, 100% { transform: rotate(-3deg) translateY(1px); } 50% { transform: rotate(3deg) translateY(-1px); } }
+@keyframes bf-side-pulse { 0%, 100% { transform: scale(.92); opacity: .7; } 50% { transform: scale(1.08); opacity: 1; } }
+@keyframes bf-side-drift { 0%, 100% { transform: translate(-1px, 1px); } 50% { transform: translate(1px, -2px); } }
+@keyframes bf-side-hover { 0%, 100% { transform: translateY(1.5px); opacity: .78; } 50% { transform: translateY(-2px); opacity: 1; } }
+@keyframes bf-side-flicker { 0%, 100% { opacity: .9; } 40% { opacity: .45; } 70% { opacity: 1; } }
+@keyframes bf-clasp-pulse { 0%, 100% { opacity: .68; transform: scale(.96); } 50% { opacity: 1; transform: scale(1.06); } }
+@keyframes bf-shine { to { transform: rotate(360deg); } }
+@keyframes bf-aura { 0%, 100% { opacity: .22; transform: scale(.96); } 50% { opacity: .46; transform: scale(1.035); } }
+@keyframes bf-rotate { to { transform: rotate(360deg); } }
+@keyframes bf-dash { to { stroke-dashoffset: -100; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ps-scene *, .ps-scene *::before, .ps-scene *::after,
+  .bf-frame *, .bf-frame *::before, .bf-frame *::after { animation: none !important; }
+}
