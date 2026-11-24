@@ -1,80 +1,174 @@
 <div align="center">
-  <img width="100%" src="https://capsule-render.vercel.app/api?type=waving&color=0:06122e,35:184e77,70:34a0a4,100:80ed99&height=190&section=header&text=Typelo&fontSize=68&fontColor=ffffff&animation=twinkling&fontAlignY=36&desc=Fast%20fingers.%20Fair%20matches.&descAlignY=58&descSize=18" alt="Typelo animated header" />
 
-  <a href="https://readme-typing-svg.demolab.com"><img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=18&pause=1100&color=80ED99&center=true&vCenter=true&width=720&lines=Ranked+typing+duels;React+%2B+FastAPI+%2B+Redis;Live+at+typelo.tech" alt="Typing tagline" /></a>
+# Typelo
 
-  <p>
-    <a href="https://www.typelo.tech/"><img src="https://img.shields.io/badge/PLAY-typelo.tech-06D6A0?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Play Typelo" /></a>
-    <img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=111827" alt="React" />
-    <img src="https://img.shields.io/badge/FastAPI-Python-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-FFD166?style=for-the-badge" alt="MIT License" /></a>
-  </p>
+**Ranked typing duels. Fast fingers, fair matches.**
+
+Head-to-head typing matches with ELO matchmaking, server-validated results, quests, and unlockable cosmetics.
+
+<br />
+
+[![Play Typelo](https://img.shields.io/badge/Play-typelo.tech-0f766e?style=for-the-badge&logo=googlechrome&logoColor=white)](https://www.typelo.tech/)
+
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=111827)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-f5c542?style=flat-square)](LICENSE)
+
+[Live Demo](https://www.typelo.tech/) · [Architecture](#architecture) · [Getting Started](#getting-started) · [Project Structure](#project-structure)
+
 </div>
 
-## âŒ¨ï¸ What it is
+---
 
-Typelo turns a typing test into a head-to-head game. Players enter ranked matches, build an ELO rating, and progress through quests and unlockable cosmetics. The browser client is React + TypeScript; the API and matchmaking services are Python/FastAPI.
+## Overview
 
-## ðŸ§­ Match flow
+Typelo turns the classic typing test into a competitive, head-to-head game. Players queue for ranked matches, climb an ELO ladder, complete quests, and unlock cosmetics as they progress.
+
+The browser client is built with React and TypeScript. The API and matchmaking services run on Python and FastAPI, with Redis coordinating live queues and PostgreSQL storing durable results.
+
+## Features
+
+| | |
+|---|---|
+| **Ranked matchmaking** | Redis-backed queue and match coordination that pairs players by rating. |
+| **Realtime duels** | Live opponent progress streamed over WebSockets. |
+| **Server-authoritative results** | Final outcomes are computed on the server from submitted keystroke timing, so the browser is never the source of truth. |
+| **ELO rating system** | Ratings update after every ranked match and persist in PostgreSQL. |
+| **Quests and progression** | Goals and rewards that keep each session meaningful. |
+| **Cosmetic unlocks** | Earn and equip cosmetics through play. |
+| **Friends** | Social features built around the competitive loop. |
+| **Installable PWA** | Add Typelo to your home screen or desktop for an app-like experience. |
+
+## Architecture
 
 ```mermaid
-flowchart LR
-  A[Player joins queue] --> B[Redis matchmaking]
-  B --> C[WebSocket typing match]
-  C --> D[Server validates keystroke timing]
-  D --> E[PostgreSQL result and ELO]
-  E --> F[Quest and profile progress]
+sequenceDiagram
+    autonumber
+    participant P as Player (React client)
+    participant A as FastAPI
+    participant R as Redis
+    participant D as PostgreSQL
+
+    P->>A: Join ranked queue
+    A->>R: Enqueue player by rating
+    R-->>A: Opponent matched
+    A-->>P: Match created (WebSocket)
+    P->>A: Stream keystrokes with timing
+    A->>A: Validate timing and compute result
+    A->>D: Persist result and ELO update
+    A-->>P: Final result, rating change, quest progress
 ```
 
-## âœ¨ In the code
+**Design principle:** the client renders and reports; the server decides. Keystroke timing is submitted to the API and validated there before any result or rating change is recorded.
 
-- Ranked queue and match coordination backed by Redis.
-- Realtime match updates over WebSockets.
-- Server-side checks use submitted keystroke timing; the browser is not the source of truth for the final match result.
-- ELO ratings, quests, friend features and cosmetic unlock flows.
-- PWA support in the frontend.
+## Tech Stack
 
-## ðŸ§° Stack
-
-| Part | Tools |
+| Layer | Technologies |
 |---|---|
-| Web client | React 18, TypeScript, Vite, Zustand, Framer Motion |
-| API | Python, FastAPI, Pydantic |
-| Matchmaking | Redis, WebSockets |
-| Persistence | PostgreSQL |
-| Tests | Vitest / Testing Library / Playwright in the frontend; Python tests in `Backend/` |
+| **Web client** | React 18, TypeScript, Vite, Zustand, Framer Motion |
+| **API** | Python, FastAPI, Pydantic |
+| **Matchmaking** | Redis, WebSockets |
+| **Persistence** | PostgreSQL |
+| **Auth** | Firebase |
+| **Testing** | Vitest, Testing Library, Playwright (frontend); Python tests (`Backend/`) |
 
-## ðŸš€ Run locally
+## Getting Started
+
+### Prerequisites
+
+- Python 3.10+
+- Node.js 18+
+- Redis and PostgreSQL (required for the complete ranked flow)
+- A Firebase project for authentication
+
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/ChristopherJoshy/Typelo.git
-cd typelo
+cd Typelo
+```
 
-# Backend
+### 2. Start the backend
+
+<details open>
+<summary><b>Windows (PowerShell)</b></summary>
+
+```powershell
 python -m venv .venv
-# Windows: .venv\Scripts\Activate.ps1
-# macOS/Linux: source .venv/bin/activate
+.venv\Scripts\Activate.ps1
 pip install -r Backend/requirements.txt
 uvicorn app.main:app --app-dir Backend --reload
 ```
 
-In another terminal, configure the frontend's `.env` from `frontend/.env.example`, then:
+</details>
+
+<details>
+<summary><b>macOS / Linux</b></summary>
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r Backend/requirements.txt
+uvicorn app.main:app --app-dir Backend --reload
+```
+
+</details>
+
+### 3. Start the frontend
+
+In a second terminal:
 
 ```bash
 cd frontend
+cp .env.example .env    # Windows: copy .env.example .env
 npm ci
 npm run dev
 ```
 
-Redis and PostgreSQL are needed for the complete ranked flow. Configure their URLs, Firebase values, and other secrets in local environment files; never commit real credentials.
+Fill in `.env` with your API URL, Firebase values, and any other required settings.
 
-## ðŸ—‚ï¸ Layout
+> **Security:** keep Redis and PostgreSQL URLs, Firebase credentials, and all other secrets in local environment files. Never commit real credentials.
 
-```text
-Backend/   FastAPI app, matchmaking, persistence, scripts
-frontend/  React client, tests, PWA assets
+## Testing
+
+```bash
+# Frontend
+cd frontend
+npm test              # unit and component tests (Vitest)
+npx playwright test   # end-to-end tests
+
+# Backend
+cd Backend
+pytest
 ```
 
-## ðŸ“„ License
+## Project Structure
 
-MIT. See [`LICENSE`](LICENSE).
+```text
+Typelo/
+├── Backend/     FastAPI app, matchmaking, persistence, scripts
+└── frontend/    React client, tests, PWA assets
+```
+
+## Contributing
+
+Issues and pull requests are welcome. For larger changes, please open an issue first to discuss what you would like to change.
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Commit your changes and push the branch
+4. Open a pull request
+
+## License
+
+Released under the [MIT License](LICENSE).
+
+<div align="center">
+<br />
+
+Built by [Christopher Joshy](https://github.com/ChristopherJoshy)
+
+</div>
